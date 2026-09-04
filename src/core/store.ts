@@ -1,4 +1,20 @@
 import { create } from 'zustand';
+import { User } from '@/types/auth';
+
+const getInitialAuth = () => {
+  try {
+    const token = localStorage.getItem('auth_token');
+    const userStr = localStorage.getItem('auth_user');
+    const user = userStr ? JSON.parse(userStr) : null;
+    if (token && user) {
+      return { isAuthenticated: true, token, user };
+    }
+  } catch (e) {
+    console.error('Failed to rehydrate auth state:', e);
+  }
+  return { isAuthenticated: false, token: null, user: null };
+};
+
 
 export type Pilgrim = {
   id: string;
@@ -207,7 +223,9 @@ type StoreState = {
   restoreFromTrash: (trashId: string) => void;
   deletePermanently: (trashId: string) => void;
   isAuthenticated: boolean;
-  login: () => void;
+  token: string | null;
+  user: User | null;
+  login: (token?: string, user?: User) => void;
   logout: () => void;
 
   pilgrims: Pilgrim[];
@@ -318,9 +336,23 @@ export const useStore = create<StoreState>((set) => ({
     return { trashItems: newTrash };
   }),
   deletePermanently: (trashId) => set((state) => ({ trashItems: state.trashItems.filter(t => t.id !== trashId) })),
-  isAuthenticated: false,
-  login: () => set({ isAuthenticated: true }),
-  logout: () => set({ isAuthenticated: false }),
+  ...getInitialAuth(),
+  login: (token, user) => {
+    const validToken = token || localStorage.getItem('auth_token');
+    const validUser = user || (localStorage.getItem('auth_user') ? JSON.parse(localStorage.getItem('auth_user')!) : null);
+    if (validToken) localStorage.setItem('auth_token', validToken);
+    if (validUser) localStorage.setItem('auth_user', JSON.stringify(validUser));
+    set({
+      isAuthenticated: true,
+      token: validToken,
+      user: validUser,
+    });
+  },
+  logout: () => {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('auth_user');
+    set({ isAuthenticated: false, token: null, user: null });
+  },
 
   broadcasts: [
     { id: 4, title: "Cuaca Ekstrem Terik", message: "Cuaca hari ini diperkirakan sangat terik. Seluruh jamaah diwajibkan membawa payung dan botol air minum.", target: "Semua Jamaah", time: "05.00", date: "2026-07-28", originalTime: "05.00", originalDate: "2026-07-28" },

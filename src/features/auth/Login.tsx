@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '@/core/store';
+import { authService } from '@/core/services/authService';
 import { LogIn, KeyRound, Mail, AlertCircle, ArrowRight } from 'lucide-react';
 
 export default function Login() {
@@ -9,7 +10,7 @@ export default function Login() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     
@@ -20,17 +21,16 @@ export default function Login() {
 
     setIsLoading(true);
 
-    // Simulasi loading
-    setTimeout(() => {
-      // Mock login check
-      if (email === 'admin@dnatour.id' && password === 'admin123') {
-        login();
-      } else {
-        setError('Email atau password tidak valid. Coba admin@dnatour.id / admin123');
-        setIsLoading(false);
-      }
-    }, 1000);
+    try {
+      const response = await authService.login({ email, password });
+      login(response.token, response.user);
+    } catch (err: any) {
+      setError(err?.message || 'Gagal masuk. Periksa email dan password Anda.');
+    } finally {
+      setIsLoading(false);
+    }
   };
+
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 relative overflow-hidden">

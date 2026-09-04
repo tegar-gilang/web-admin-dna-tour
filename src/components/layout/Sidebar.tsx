@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { useStore } from '@/core/store';
+import { authService } from '@/core/services/authService';
 import { appService } from '@/core/services/appService';
 import { 
   Users, UsersRound, Contact, 
@@ -13,9 +14,26 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/Button';
 
 export function Sidebar({ onClose }: { onClose?: () => void }) {
-  const { logout } = useStore();
+  const { logout, token } = useStore();
   const location = useLocation();
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      if (token) {
+        await authService.logout(token);
+      }
+    } catch (err) {
+      console.error('Backend logout error (clearing local state anyway):', err);
+    } finally {
+      logout();
+      onClose?.();
+      setIsLogoutModalOpen(false);
+      setIsLoggingOut(false);
+    }
+  };
 
   const navGroups = useMemo(() => [
     {
@@ -188,20 +206,18 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
           <DialogFooter className="flex gap-3 sm:justify-end mt-4 pt-4 border-t border-gray-100">
             <Button
               variant="outline"
+              disabled={isLoggingOut}
               onClick={() => setIsLogoutModalOpen(false)}
               className="text-gray-700 border-gray-300 hover:bg-gray-50 flex-1 sm:flex-none"
             >
               Batal
             </Button>
             <Button
-              onClick={() => {
-                logout();
-                onClose?.();
-                setIsLogoutModalOpen(false);
-              }}
-              className="bg-red-600 text-white hover:bg-red-700 shadow-sm flex-1 sm:flex-none border-none"
+              disabled={isLoggingOut}
+              onClick={handleLogout}
+              className="bg-red-600 text-white hover:bg-red-700 shadow-sm flex-1 sm:flex-none border-none disabled:opacity-70"
             >
-              Ya, Keluar Sistem
+              {isLoggingOut ? 'Mengeluarkan...' : 'Ya, Keluar Sistem'}
             </Button>
           </DialogFooter>
         </DialogContent>
