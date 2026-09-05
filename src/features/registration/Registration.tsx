@@ -1,5 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { toast } from '@/lib/toast';
+import { registrationService } from '@/core/services/registrationService';
+import { packageService } from '@/core/services/packageService';
+import { kloterService } from '@/core/services/kloterService';
 import { ConfirmDeleteDialog } from '@/components/ui/ConfirmDeleteDialog';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table';
@@ -32,11 +35,46 @@ export default function Registration() {
     updatePilgrim, 
     deletePilgrims, 
     groups, 
+    packages,
     financeTransactions, 
     addTransaction, 
     updateTransaction, 
-    deleteTransaction 
+    deleteTransaction,
+    setPilgrims,
+    setGroups,
+    setPackages,
+    isFetchingRegistrations,
+    fetchError,
+    setFetchingRegistrations,
+    setFetchError
   } = useStore();
+
+  useEffect(() => {
+    const fetchRegistrations = async () => {
+      try {
+        setFetchingRegistrations(true);
+        setFetchError(null);
+        
+        // Fetch all necessary data concurrently
+        const [registrationsData, packagesData, klotersData] = await Promise.all([
+          registrationService.getRegistrations(),
+          packageService.getPackages(),
+          kloterService.getKloters()
+        ]);
+        
+        setPilgrims(registrationsData);
+        setPackages(packagesData);
+        setGroups(klotersData);
+      } catch (err: any) {
+        setFetchError(err.message || 'Gagal memuat data dari server.');
+        toast('Gagal memuat data pendaftaran', 'error');
+      } finally {
+        setFetchingRegistrations(false);
+      }
+    };
+
+    fetchRegistrations();
+  }, [setPilgrims, setPackages, setGroups, setFetchingRegistrations, setFetchError]);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState<'all' | 'complete' | 'incomplete' | 'paid' | 'dp' | 'unpaid'>('all');
@@ -161,10 +199,23 @@ export default function Registration() {
     setIsDeleteDialogOpen(true);
   };
 
-  const confirmDelete = () => {
-    deletePilgrims(Array.from(selectedIds));
-    setSelectedIds(new Set());
-    toast("Data pendaftaran berhasil dihapus.", "success");
+  const confirmDelete = async () => {
+    try {
+      setFetchingRegistrations(true);
+      const ids = Array.from(selectedIds);
+      
+      // Hit endpoint cancel untuk setiap ID yang dipilih
+      await Promise.all(ids.map(id => registrationService.cancelRegistration(id)));
+      
+      deletePilgrims(ids); // Memindahkan ke tempat sampah secara lokal
+      setSelectedIds(new Set());
+      toast("Data pendaftaran berhasil dihapus (dibatalkan).", "success");
+    } catch (err: any) {
+      toast("Gagal menghapus/membatalkan pendaftaran dari server.", "error");
+    } finally {
+      setFetchingRegistrations(false);
+      setIsDeleteDialogOpen(false);
+    }
   };
 
   const openAddModal = () => {
@@ -213,34 +264,50 @@ export default function Registration() {
     setIsModalOpen(true);
   };
 
-  const openEditModal = (p: Pilgrim) => {
-    setEditingPilgrim(p);
-    setModifiedDates({
-      registrationDate: !!p.registrationDate,
-      departureDate: !!p.departureDate,
-      paymentDate: !!p.paymentDate,
-    });
-    setFormData({
-      ...p,
-      paymentOption: p.paymentOption || 'DP',
-      totalAmount: p.totalAmount || 30000000,
-      paidAmount: p.paidAmount || (p.paymentOption === 'Bayar Lunas' ? 30000000 : 10000000),
-      paymentMethod: p.paymentMethod || 'Transfer BCA',
-      paymentDate: p.paymentDate || todayStr,
-      paymentNotes: p.paymentNotes || ''
-    });
-    setModalMode('edit');
-    setIsModalOpen(true);
+  const openEditModal = async (p: Pilgrim) => {
+    try {
+      setFetchingRegistrations(true);
+      const detailData = await registrationService.getRegistration(p.id);
+      setEditingPilgrim(detailData);
+      setModifiedDates({
+        registrationDate: !!detailData.registrationDate,
+        departureDate: !!detailData.departureDate,
+        paymentDate: !!detailData.paymentDate,
+      });
+      setFormData({
+        ...detailData,
+        paymentOption: detailData.paymentOption || 'DP',
+        totalAmount: detailData.totalAmount || 30000000,
+        paidAmount: detailData.paidAmount || (detailData.paymentOption === 'Bayar Lunas' ? 30000000 : 10000000),
+        paymentMethod: detailData.paymentMethod || 'Transfer BCA',
+        paymentDate: detailData.paymentDate || todayStr,
+        paymentNotes: detailData.paymentNotes || ''
+      });
+      setModalMode('edit');
+      setIsModalOpen(true);
+    } catch (err: any) {
+      toast("Gagal memuat data pendaftaran", "error");
+    } finally {
+      setFetchingRegistrations(false);
+    }
   };
 
-  const openDetailModal = (p: Pilgrim) => {
-    setEditingPilgrim(p);
-    setFormData(p);
-    setModalMode('detail');
-    setIsModalOpen(true);
+  const openDetailModal = async (p: Pilgrim) => {
+    try {
+      setFetchingRegistrations(true);
+      const detailData = await registrationService.getRegistration(p.id);
+      setEditingPilgrim(detailData);
+      setFormData(detailData);
+      setModalMode('detail');
+      setIsModalOpen(true);
+    } catch (err: any) {
+      toast("Gagal memuat detail pendaftaran", "error");
+    } finally {
+      setFetchingRegistrations(false);
+    }
   };
 
-  const savePilgrim = () => {
+  const savePilgrim = async () => {
     if (!formData.id || !formData.id.trim()) {
       toast("ID Jamaah wajib diisi.", "error");
       return;
@@ -261,62 +328,47 @@ export default function Registration() {
     const payDate = formData.paymentDate || todayStr;
     const payNotes = formData.paymentNotes || (payOption === 'DP' ? 'DP Uang Muka Pendaftaran' : payOption === 'Bayar Lunas' ? 'Pembayaran Lunas Pendaftaran' : 'Belum Ada Pembayaran');
 
+    const preparedData = {
+      ...formData,
+      paymentOption: payOption,
+      totalAmount: totalAmt,
+      paidAmount: paidAmt,
+      paymentMethod: payMethod,
+      paymentDate: payDate,
+      paymentNotes: payNotes
+    };
+
     if (editingPilgrim) {
-      updatePilgrim(editingPilgrim.id, {
-        ...formData,
-        paymentOption: payOption,
-        totalAmount: totalAmt,
-        paidAmount: paidAmt,
-        paymentMethod: payMethod,
-        paymentDate: payDate,
-        paymentNotes: payNotes
-      });
-
-      toast("Data pendaftar dan status pembayaran berhasil diperbarui.", "success");
+      try {
+        setFetchingRegistrations(true);
+        const updatedPilgrim = await registrationService.updateRegistration(editingPilgrim.id, preparedData, packages, groups);
+        
+        // Perbarui list di frontend
+        updatePilgrim(editingPilgrim.id, updatedPilgrim);
+        
+        toast("Data pendaftar dan status pembayaran berhasil diperbarui.", "success");
+        setIsModalOpen(false);
+      } catch (err: any) {
+        toast(err.message || "Gagal memperbarui pendaftaran ke server.", "error");
+      } finally {
+        setFetchingRegistrations(false);
+      }
     } else {
-      const newId = formData.id || `REG-${Math.floor(1000 + Math.random() * 9000)}`;
-      addPilgrim({
-        id: newId,
-        formId: formData.formId,
-        name: formData.name || 'Tidak Diketahui',
-        passport: formData.passport || '-',
-        group: formData.group || 'Belum Ada',
-        umrahPackage: formData.umrahPackage || 'Yamani',
-        gender: formData.gender || 'Laki-laki',
-        age: Number(formData.age) || 0,
-        phone: formData.phone || '',
-        registrationDate: formData.registrationDate || todayStr,
-        departureDate: formData.departureDate || '',
-        returnDate: formData.returnDate || '',
-        hotelMakkah: formData.hotelMakkah || 'Swissôtel Al Maqam Makkah',
-        hotelMadinah: formData.hotelMadinah || 'Anwar Al Madinah Movenpick',
-        hotel: formData.hotel || 'Swissôtel Al Maqam Makkah',
-        ktp: formData.ktp || '',
-        documentInfo: formData.documentInfo || '',
-        meningitis: Boolean(formData.meningitis),
-        photo: Boolean(formData.photo),
-        koperBesar: Boolean(formData.koperBesar),
-        koperKabin: Boolean(formData.koperKabin),
-        batik: Boolean(formData.batik),
-        bukuDomisili: Boolean(formData.bukuDomisili),
-        kainIhram: Boolean(formData.kainIhram),
-        sabuk: formData.sabuk || '',
-        kerudungMerah: Boolean(formData.kerudungMerah),
-        kerudungPutih: Boolean(formData.kerudungPutih),
-        tasSelempang: Boolean(formData.tasSelempang),
-        tasSandal: Boolean(formData.tasSandal),
-        syall: Boolean(formData.syall),
-        paymentOption: payOption,
-        totalAmount: totalAmt,
-        paidAmount: paidAmt,
-        paymentMethod: payMethod,
-        paymentDate: payDate,
-        paymentNotes: payNotes
-      });
-
-      toast("Pendaftaran jamaah baru berhasil disimpan & 1 transaksi pemasukan tercatat di Keuangan.", "success");
+      try {
+        setFetchingRegistrations(true);
+        const newPilgrim = await registrationService.createRegistration(preparedData, packages, groups);
+        
+        // Perbarui list di frontend
+        setPilgrims([newPilgrim, ...pilgrims]);
+        
+        toast("Pendaftaran jamaah baru berhasil disimpan di server.", "success");
+        setIsModalOpen(false);
+      } catch (err: any) {
+        toast(err.message || "Gagal menyimpan pendaftaran ke server.", "error");
+      } finally {
+        setFetchingRegistrations(false);
+      }
     }
-    setIsModalOpen(false);
   };
 
   const handleExportExcel = () => {
@@ -733,9 +785,9 @@ export default function Registration() {
                 onChange={(e) => { setFilterPackage(e.target.value); setCurrentPage(1); }}
               >
                 <option value="">Semua Paket</option>
-                <option value="Yamani">Yamani</option>
-                <option value="Raudhah">Raudhah</option>
-                <option value="Multazam">Multazam</option>
+                {packages.map(p => (
+                  <option key={p.id} value={p.name}>{p.name}</option>
+                ))}
               </select>
             </div>
 
@@ -918,7 +970,39 @@ export default function Registration() {
                 );
               })}
 
-              {filteredPilgrims.length === 0 && (
+              {isFetchingRegistrations ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="h-56 text-center">
+                    <div className="flex flex-col items-center justify-center text-gray-500">
+                      <div className="w-12 h-12 rounded-full flex items-center justify-center mb-3">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+                      </div>
+                      <p className="font-semibold text-gray-900">Memuat data pendaftaran...</p>
+                      <p className="text-xs text-gray-500 mt-1">Harap tunggu sebentar.</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : fetchError ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="h-56 text-center">
+                    <div className="flex flex-col items-center justify-center text-red-500">
+                      <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mb-3 border border-red-200">
+                        <AlertCircle className="w-5 h-5 text-red-500" />
+                      </div>
+                      <p className="font-semibold text-gray-900">Gagal memuat data pendaftaran</p>
+                      <p className="text-xs text-gray-500 mt-1 max-w-sm">{fetchError}</p>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="mt-3 text-xs rounded-xl cursor-pointer"
+                        onClick={() => window.location.reload()}
+                      >
+                        Coba Lagi
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : filteredPilgrims.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="h-56 text-center">
                     <div className="flex flex-col items-center justify-center text-gray-500">
@@ -942,7 +1026,7 @@ export default function Registration() {
                     </div>
                   </TableCell>
                 </TableRow>
-              )}
+              ) : null}
             </TableBody>
           </Table>
         </div>
@@ -1454,12 +1538,9 @@ export default function Registration() {
                         <div className="sm:col-span-8">
                           <select value={formData.umrahPackage || ''} onChange={(e) => setFormData({...formData, umrahPackage: e.target.value})} className={`h-12 sm:h-13 w-full rounded-2xl border border-gray-300 bg-white px-4 sm:px-5 text-base ${formData.umrahPackage ? 'font-bold text-gray-900' : 'font-normal text-gray-400'} focus:outline-none focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859] cursor-pointer`}>
                             <option value="" className="text-gray-400 font-normal">Pilih Paket Umrah</option>
-                            <option value="Reguler 9 Hari" className="text-gray-900 font-normal">Reguler 9 Hari</option>
-                            <option value="Reguler 12 Hari" className="text-gray-900 font-normal">Reguler 12 Hari</option>
-                            <option value="VIP 9 Hari" className="text-gray-900 font-normal">VIP 9 Hari</option>
-                            <option value="Yamani" className="text-gray-900 font-normal">Yamani</option>
-                            <option value="Raudhah" className="text-gray-900 font-normal">Raudhah</option>
-                            <option value="Multazam" className="text-gray-900 font-normal">Multazam</option>
+                            {packages.map(p => (
+                              <option key={p.id} value={p.name} className="text-gray-900 font-normal">{p.name}</option>
+                            ))}
                           </select>
                         </div>
                       </div>

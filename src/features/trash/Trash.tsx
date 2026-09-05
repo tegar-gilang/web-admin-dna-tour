@@ -28,12 +28,33 @@ export default function Trash() {
     toast("Item berhasil dikembalikan ke sistem.", "success");
   };
 
-  const handlePermanentDelete = (id: string) => {
+  const handlePermanentDelete = async (id: string) => {
+    const item = trashItems.find(t => t.id === id);
+    if (item && item.type === 'Jamaah') {
+      try {
+        await import('@/core/services/registrationService').then(m => 
+          m.registrationService.deleteRegistration(item.originalId)
+        );
+      } catch (e: any) {
+        toast("Gagal menghapus data jamaah secara permanen dari server", "error");
+        return;
+      }
+    }
     deletePermanently(id);
     toast("Item telah dihapus secara permanen.", "success");
   };
 
-  const handleEmptyTrash = () => {
+  const handleEmptyTrash = async () => {
+    const jamaahItems = trashItems.filter(t => t.type === 'Jamaah');
+    if (jamaahItems.length > 0) {
+      try {
+        const { registrationService } = await import('@/core/services/registrationService');
+        await Promise.all(jamaahItems.map(item => registrationService.deleteRegistration(item.originalId)));
+      } catch (e: any) {
+        toast("Gagal membersihkan beberapa data jamaah dari server", "error");
+        return;
+      }
+    }
     emptyTrash();
     toast("Semua isi riwayat hapus telah dibersihkan.", "success");
   };

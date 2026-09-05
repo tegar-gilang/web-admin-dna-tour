@@ -217,6 +217,14 @@ export type TrashItem = {
   reason?: string;
 };
 
+export type Package = {
+  id: string;
+  name: string;
+  category: string;
+  status: string;
+  isFeatured: boolean;
+};
+
 type StoreState = {
   trashItems: TrashItem[];
   emptyTrash: () => void;
@@ -230,6 +238,7 @@ type StoreState = {
 
   pilgrims: Pilgrim[];
   groups: Group[];
+  packages: Package[];
   families: Family[];
   tourLeaders: TourLeader[];
   mutawifs: Mutawif[];
@@ -242,6 +251,14 @@ type StoreState = {
   readNotificationIds: string[];
   markNotificationAsRead: (id: string) => void;
   markAllNotificationsAsRead: () => void;
+  
+  isFetchingRegistrations: boolean;
+  fetchError: string | null;
+  setPilgrims: (pilgrims: Pilgrim[]) => void;
+  setGroups: (groups: Group[]) => void;
+  setPackages: (packages: Package[]) => void;
+  setFetchingRegistrations: (isLoading: boolean) => void;
+  setFetchError: (error: string | null) => void;
   
   addPilgrim: (p: Pilgrim) => void;
   updatePilgrim: (id: string, p: Partial<Pilgrim>) => void;
@@ -1066,6 +1083,16 @@ export const useStore = create<StoreState>((set) => ({
       referenceNo: "EXP-2026-025"
     }
   ],
+
+  packages: [],
+
+  isFetchingRegistrations: false,
+  fetchError: null,
+  setPilgrims: (pilgrims) => set({ pilgrims }),
+  setGroups: (groups) => set({ groups }),
+  setPackages: (packages) => set({ packages }),
+  setFetchingRegistrations: (isLoading) => set({ isFetchingRegistrations: isLoading }),
+  setFetchError: (error) => set({ fetchError: error }),
 
   addPilgrim: (p) => set((state) => {
     // Find matching group to auto-inherit tour leader and mutawif if not specified
