@@ -53,6 +53,12 @@ import {
 } from 'lucide-react';
 
 export default function Finance() {
+
+// ==========================================
+// FITUR: FINANCE
+// Komponen utama untuk fitur FINANCE
+// ==========================================
+
   const { financeTransactions, pilgrims, addTransaction, updateTransaction, deleteTransaction, updatePilgrim } = useStore();
 
   const [activeTab, setActiveTab] = useState<'all' | 'income' | 'receivables' | 'expense'>('all');

@@ -20,6 +20,12 @@ import { exportToExcel } from '@/lib/export';
 import { PaymentMethodOptions } from '@/components/ui/PaymentMethodOptions';
 
 export default function Registration() {
+
+// ==========================================
+// FITUR: REGISTRATION
+// Komponen utama untuk fitur REGISTRATION
+// ==========================================
+
   const { 
     pilgrims, 
     addPilgrim, 

@@ -19,6 +19,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { exportToExcel } from '@/lib/export';
 
 export default function Groups() {
+
+// ==========================================
+// FITUR: GROUPS
+// Komponen utama untuk fitur GROUPS
+// ==========================================
+
   const navigate = useNavigate();
   const { 
     groups, 

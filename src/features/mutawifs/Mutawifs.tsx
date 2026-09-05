@@ -17,6 +17,12 @@ import {
 } from 'lucide-react';
 
 export default function Mutawifs() {
+
+// ==========================================
+// FITUR: MUTAWIFS
+// Komponen utama untuk fitur MUTAWIFS
+// ==========================================
+
   const { mutawifs, addMutawif, updateMutawif, deleteMutawifs, groups } = useStore();
   
   const [searchTerm, setSearchTerm] = useState("");

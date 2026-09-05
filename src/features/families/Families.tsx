@@ -13,6 +13,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { exportToExcel } from '@/lib/export';
 
 export default function Families() {
+
+// ==========================================
+// FITUR: FAMILIES
+// Komponen utama untuk fitur FAMILIES
+// ==========================================
+
   const { families, addFamily, updateFamily, deleteFamilies } = useStore();
   const [searchTerm, setSearchTerm] = useState("");
   const [showFilters, setShowFilters] = useState(false);

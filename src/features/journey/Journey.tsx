@@ -20,6 +20,12 @@ import {
 } from 'lucide-react';
 
 export default function Journey() {
+
+// ==========================================
+// FITUR: JOURNEY
+// Komponen utama untuk fitur JOURNEY
+// ==========================================
+
   const { schedules, addSchedule, updateSchedule, deleteSchedules } = useStore();
 
   const [viewMode, setViewMode] = useState<'timeline' | 'table'>('timeline');

@@ -19,6 +19,12 @@ import { exportRoomListToPdf } from '@/lib/exportPdf';
 import { toast } from '@/lib/toast';
 
 export default function GroupDetail() {
+
+// ==========================================
+// FITUR: GROUPS
+// Komponen utama untuk fitur GROUPS
+// ==========================================
+
   const { groupId } = useParams<{ groupId: string }>();
   const navigate = useNavigate();
 

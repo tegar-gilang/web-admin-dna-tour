@@ -75,6 +75,12 @@ const DUMMY_TELEMETRY: Record<string, GroupTelemetry> = {
 };
 
 export default function LiveMonitoring() {
+
+// ==========================================
+// FITUR: LIVEMONITORING
+// Komponen utama untuk fitur LIVEMONITORING
+// ==========================================
+
   const { groups, pilgrims, tourLeaders, mutawifs, addBroadcast } = useStore();
   const [selectedGroupId, setSelectedGroupId] = useState<string | 'ALL'>('ALL');
   const [activeTab, setActiveTab] = useState<'all' | 'normal' | 'warning' | 'table'>('all');

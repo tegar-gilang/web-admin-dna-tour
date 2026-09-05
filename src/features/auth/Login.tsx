@@ -4,6 +4,12 @@ import { authService } from '@/core/services/authService';
 import { LogIn, KeyRound, Mail, AlertCircle, ArrowRight } from 'lucide-react';
 
 export default function Login() {
+
+// ==========================================
+// FITUR: AUTH
+// Komponen utama untuk fitur AUTH
+// ==========================================
+
   const { login } = useStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

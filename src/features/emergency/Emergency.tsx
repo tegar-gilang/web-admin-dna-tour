@@ -20,6 +20,12 @@ import { Dialog, DialogContent } from '@/components/ui/Dialog';
 import { exportToExcel } from '@/lib/export';
 
 export default function Emergency() {
+
+// ==========================================
+// FITUR: EMERGENCY
+// Komponen utama untuk fitur EMERGENCY
+// ==========================================
+
   const navigate = useNavigate();
   const { 
     emergencies, 

@@ -17,6 +17,12 @@ import {
 } from 'lucide-react';
 
 export default function TourLeaders() {
+
+// ==========================================
+// FITUR: TOURLEADERS
+// Komponen utama untuk fitur TOURLEADERS
+// ==========================================
+
   const { tourLeaders, addTourLeader, updateTourLeader, deleteTourLeaders, groups } = useStore();
   
   const [searchTerm, setSearchTerm] = useState("");

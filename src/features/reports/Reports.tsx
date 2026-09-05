@@ -924,7 +924,7 @@ export default function Reports() {
                     return (
                       <Card 
                         key={card.id} 
-                        className="bg-white border border-gray-200/60 hover:border-red-200/80 rounded-2xl overflow-hidden flex flex-col group transition-all duration-300 hover:shadow-lg hover:-translate-y-1 relative"
+                        className="bg-white border border-[#740A03] hover:border-[#740A03] rounded-2xl overflow-hidden flex flex-col group transition-all duration-300 hover:shadow-lg hover:-translate-y-1 relative"
                       >
                         {/* Hover accent top line */}
                         <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#740A03] to-red-400 opacity-0 group-hover:opacity-100 transition-opacity" />

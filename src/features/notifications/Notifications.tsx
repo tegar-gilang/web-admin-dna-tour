@@ -19,6 +19,12 @@ import {
 } from '@/components/ui/Dialog';
 
 export default function Notifications() {
+
+// ==========================================
+// FITUR: NOTIFICATIONS
+// Komponen utama untuk fitur NOTIFICATIONS
+// ==========================================
+
   const navigate = useNavigate();
   const { broadcasts, emergencies, readNotificationIds, markNotificationAsRead, markAllNotificationsAsRead } = useStore();
   

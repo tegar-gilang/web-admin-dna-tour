@@ -17,6 +17,12 @@ import {
 } from 'lucide-react';
 
 export default function Broadcast() {
+
+// ==========================================
+// FITUR: BROADCAST
+// Komponen utama untuk fitur BROADCAST
+// ==========================================
+
   const { broadcasts, addBroadcast, updateBroadcast, deleteBroadcasts, groups, tourLeaders, mutawifs, pilgrims } = useStore();
 
   // Extract unique kloters from groups & pilgrims

@@ -19,6 +19,12 @@ import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 
 export default function StaffStock() {
+
+// ==========================================
+// FITUR: STAFFSTOCK
+// Komponen utama untuk fitur STAFFSTOCK
+// ==========================================
+
   const { staffStocks, addStaffStock, updateStaffStock, deleteStaffStock, deleteStaffStocks, adjustStockQuantity } = useStore();
   const [searchTerm, setSearchTerm] = useState("");
   const [showFilters, setShowFilters] = useState(false);

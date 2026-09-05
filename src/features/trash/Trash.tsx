@@ -9,6 +9,12 @@ import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 
 export default function Trash() {
+
+// ==========================================
+// FITUR: TRASH
+// Komponen utama untuk fitur TRASH
+// ==========================================
+
   const navigate = useNavigate();
   const { trashItems, restoreFromTrash, deletePermanently, emptyTrash } = useStore();
 

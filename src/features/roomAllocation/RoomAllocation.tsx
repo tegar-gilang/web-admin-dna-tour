@@ -18,6 +18,12 @@ import {
 } from 'lucide-react';
 
 export default function RoomAllocation() {
+
+// ==========================================
+// FITUR: ROOMALLOCATION
+// Komponen utama untuk fitur ROOMALLOCATION
+// ==========================================
+
   const { 
     rooms, addRoom, updateRoom, deleteRoom, 
     addOccupantToRoom, removeOccupantFromRoom, updateOccupantInRoom,

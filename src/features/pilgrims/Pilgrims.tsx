@@ -19,6 +19,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { exportMasterWorkbookToExcel } from '@/lib/export';
 
 export default function Pilgrims() {
+
+// ==========================================
+// FITUR: PILGRIMS
+// Komponen utama untuk fitur PILGRIMS
+// ==========================================
+
   const { 
     pilgrims, 
     addPilgrim, 
