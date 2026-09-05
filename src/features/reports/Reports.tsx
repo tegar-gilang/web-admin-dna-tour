@@ -14,6 +14,9 @@ import { exportToExcel, exportMasterWorkbookToExcel } from '@/lib/export';
 import { toast } from '@/lib/toast';
 
 export default function Reports() {
+  // ==========================================
+  // FITUR: STATE & VARIABLE INITIALIZATION
+  // ==========================================
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [startDate, setStartDate] = useState<string>('2026-01-01');
   const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -24,6 +27,9 @@ export default function Reports() {
   const [isExportingMaster, setIsExportingMaster] = useState(false);
   const [activeExportId, setActiveExportId] = useState<string | null>(null);
 
+  // ==========================================
+  // FITUR: DATA SOURCE & GLOBAL STATE
+  // ==========================================
   const { 
     pilgrims, 
     groups, 
@@ -39,6 +45,11 @@ export default function Reports() {
 
   const todayStr = new Date().toISOString().split('T')[0];
 
+  // ==========================================
+  // FITUR: DATA FILTERING & PROCESSING
+  // Memproses data berdasarkan filter yang aktif
+  // ==========================================
+  
   // Unique groups dropdown list
   const availableGroups = useMemo(() => {
     const list = groups.map(g => g.name || g.kloter).filter(Boolean);
@@ -167,6 +178,10 @@ export default function Reports() {
     });
   }, [emergencies, startDate, endDate, selectedGroup, selectedStatus, searchQuery]);
 
+  // ==========================================
+  // FITUR: FINANCIAL CALCULATIONS
+  // Menghitung total pemasukan dan pengeluaran
+  // ==========================================
   // Financial calculations on filtered dataset
   const totalIncome = useMemo(() => {
     return filteredFinance
@@ -182,6 +197,9 @@ export default function Reports() {
 
   const netBalance = totalIncome - totalExpense;
 
+  // ==========================================
+  // FITUR: FILTER ACTIONS
+  // ==========================================
   // Reset Filters Function
   const handleResetFilters = () => {
     setSelectedCategory('ALL');
@@ -193,6 +211,10 @@ export default function Reports() {
     toast("Filter telah direset ke default.", "success");
   };
 
+  // ==========================================
+  // FITUR: EXPORT TO EXCEL (MASTER)
+  // Ekspor seluruh data yang terfilter ke Excel
+  // ==========================================
   // Master All-in-One Export Handler (Exports Filtered Records)
   const handleExportMasterAllInOne = async () => {
     setIsExportingMaster(true);
@@ -375,6 +397,10 @@ export default function Reports() {
     }
   };
 
+  // ==========================================
+  // FITUR: EXPORT TO EXCEL (INDIVIDUAL)
+  // Ekspor laporan spesifik per modul
+  // ==========================================
   // Individual Export Action Handlers
   const handleExportIndividual = async (id: string) => {
     setActiveExportId(id);
@@ -531,6 +557,10 @@ export default function Reports() {
     }
   };
 
+  // ==========================================
+  // FITUR: REPORT CATEGORIES & STRUCTURE
+  // Mendefinisikan struktur kartu laporan
+  // ==========================================
   // Structured Categorized Report Groups
   const categoryContainers = [
     {

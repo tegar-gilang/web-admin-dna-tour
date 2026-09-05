@@ -58,11 +58,19 @@ export default function Dashboard() {
 
   const journey = dashboardService.getJourneyStatus();
 
+  // ==========================================
+  // FITUR: CORE METRICS & DATA CALCULATIONS
+  // Menghitung statistik utama untuk dashboard
+  // ==========================================
   // Core Metrics Calculations
   const totalPilgrims = pilgrims.length;
   const lunasPilgrims = pilgrims.filter(p => p.paymentOption === 'Bayar Lunas' || (p.paidAmount && p.totalAmount && p.paidAmount >= p.totalAmount)).length;
   const dpPilgrims = pilgrims.filter(p => p.paymentOption === 'DP' || (p.paidAmount && p.totalAmount && p.paidAmount < p.totalAmount && p.paidAmount > 0)).length;
 
+  // ==========================================
+  // FITUR: FINANCE METRICS
+  // Menghitung saldo, pemasukan, pengeluaran & tagihan
+  // ==========================================
   // Finance Metrics
   const totalIncome = financeTransactions
     .filter(t => t.type.startsWith('Pemasukan') && t.status === 'Berhasil')
@@ -84,6 +92,9 @@ export default function Dashboard() {
 
   const totalReceivables = pilgrimsWithReceivables.reduce((sum, p) => sum + p.remaining, 0);
 
+  // ==========================================
+  // FITUR: INVENTORY & STAFF METRICS
+  // ==========================================
   // Groups & Staff
   const totalGroups = groups.length;
   const totalStaff = tourLeaders.length + mutawifs.length;
