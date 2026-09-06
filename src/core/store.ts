@@ -1758,12 +1758,26 @@ export const useStore = create<StoreState>((set) => ({
   setFinanceLoading: (isLoading) => set({ isFetchingFinance: isLoading }),
   setFinanceError: (error) => set({ financeFetchError: error }),
 
+  // Finance expenses state
   financeExpenses: [],
-  setFinanceExpenses: (expenses) => set({ financeExpenses: expenses }),
+  // Updated setter that supports both direct array and functional updater
+  setFinanceExpenses: (updater: FinanceTransaction[] | ((prev: FinanceTransaction[]) => FinanceTransaction[])) =>
+    set(state => ({
+      financeExpenses: typeof updater === 'function' ? (updater as any)(state.financeExpenses) : updater,
+    })),
   isFetchingExpenses: false,
   expenseFetchError: null,
   setExpenseLoading: (isLoading) => set({ isFetchingExpenses: isLoading }),
   setExpenseError: (error) => set({ expenseFetchError: error }),
+
+  // Finance summary state
+  financeSummary: {
+    total_income: 0,
+    total_expense: 0,
+    total_receivable: 0,
+    net_balance: 0,
+  },
+  setFinanceSummary: (summary) => set({ financeSummary: summary }),
 
   // Broadcast actions
   addBroadcast: (b) => set((state) => {

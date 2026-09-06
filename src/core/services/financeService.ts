@@ -21,6 +21,17 @@ export interface BackendPaymentResponse {
   data: BackendPayment[];
 }
 
+export const mapPaymentMethodToBackend = (uiMethod: string): string => {
+  switch (uiMethod) {
+    case 'Transfer Bank BCA': return 'bca_transfer';
+    case 'Transfer Bank Mandiri': return 'mandiri_transfer';
+    case 'Transfer Bank BSI': return 'bsi_transfer';
+    case 'Tunai': return 'cash';
+    case 'QRIS': return 'edc_qris';
+    default: return uiMethod;
+  }
+};
+
 export const financeService = {
   getPayments: async (): Promise<FinanceTransaction[]> => {
     // 1. Fetch data from backend
@@ -59,7 +70,14 @@ export const financeService = {
     });
   },
   createPayment: async (registrationId: string | number, payload: { amount: number; payment_type: 'down_payment' | 'full_payment' | string; payment_method: string; payment_date: string; notes?: string; }): Promise<FinanceTransaction> => {
-    const response = await apiClient.post<BackendPayment>(`/registrations/${registrationId}/payments`, payload);
+    const backendPayload = {
+      ...payload,
+      payment_method: mapPaymentMethodToBackend(payload.payment_method)
+    };
+    const response = await apiClient<BackendPayment>(`/registrations/${registrationId}/payments`, {
+      method: 'POST',
+      body: JSON.stringify(backendPayload)
+    });
     const payment: BackendPayment = (response as any).data ?? response;
     let typeStr: FinanceTransaction['type'] = 'Pemasukan Lain';
     if (payment.payment_type === 'down_payment') {

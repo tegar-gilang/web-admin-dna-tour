@@ -2,6 +2,8 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useStore, FinanceTransaction, Pilgrim } from '@/core/store';
 import { financeService } from '@/core/services/financeService';
 import { expenseService } from '@/core/services/expenseService';
+import { registrationService, RegistrationOption } from '@/core/services/registrationService';
+import { financeSummaryService } from '@/core/services/financeSummaryService';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
@@ -78,7 +80,9 @@ export default function Finance() {
     setExpenseLoading,
     setExpenseError,
     isFetchingExpenses,
-    expenseFetchError
+    expenseFetchError,
+    financeSummary,
+    setFinanceSummary
   } = useStore();
 
   useEffect(() => {
@@ -115,6 +119,19 @@ export default function Finance() {
     fetchExpenses();
   }, [setFinanceExpenses, setExpenseLoading, setExpenseError]);
 
+  const [registrations, setRegistrations] = useState<RegistrationOption[]>([]);
+  useEffect(() => {
+    const fetchRegistrations = async () => {
+      try {
+        const data = await registrationService.getRegistrations();
+        if (data) setRegistrations(data);
+      } catch (error) {
+        console.error('Failed to fetch registrations for dropdown', error);
+      }
+    };
+    fetchRegistrations();
+  }, []);
+
   const [activeTab, setActiveTab] = useState<'all' | 'income' | 'receivables' | 'expense'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterMethod, setFilterMethod] = useState('');
@@ -130,20 +147,44 @@ export default function Finance() {
 
   // Delete Confirmation State
   const [deleteItemId, setDeleteItemId] = useState<string | null>(null);
+  const [deleteItemType, setDeleteItemType] = useState<string | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
+  // Updated handler now receives only the id (string) and infers the type
   const handleDeleteClick = (id: string) => {
     setDeleteItemId(id);
+    // Determine whether the id belongs to an expense (Pengeluaran) or income
+    const expense = financeExpenses.find((e) => e.id === id);
+    if (expense) {
+      setDeleteItemType(expense.type);
+    } else {
+      // Fallback to type from financeTransactions if present; default to 'Pemasukan'
+      const tx = financeTransactions.find((t) => t.id === id);
+      setDeleteItemType(tx?.type ?? 'Pemasukan');
+    }
     setIsDeleteDialogOpen(true);
   };
 
-  const confirmDelete = () => {
-    if (deleteItemId) {
+  const confirmDelete = async () => {
+    if (!deleteItemId) return;
+    if (deleteItemType === 'Pengeluaran') {
+      try {
+        await expenseService.deleteExpense(deleteItemId);
+        // Remove from financeExpenses state
+        setFinanceExpenses((prev) => prev.filter((e) => e.id !== deleteItemId));
+        toast('Data pengeluaran berhasil dihapus.', 'success');
+      } catch (err) {
+        toast(`Gagal menghapus pengeluaran: ${err instanceof Error ? err.message : String(err)}`,'error');
+        return; // keep dialog open on error
+      }
+    } else {
       deleteTransaction(deleteItemId);
-      toast("Data berhasil dihapus.", "success");
-      setDeleteItemId(null);
-      setIsDeleteDialogOpen(false);
+      toast('Data berhasil dihapus.', 'success');
     }
+    // Cleanup dialog state
+    setDeleteItemId(null);
+    setDeleteItemType(null);
+    setIsDeleteDialogOpen(false);
   };
 
   // Selected Data State
@@ -169,7 +210,7 @@ export default function Finance() {
     totalAmount: 30000000,
     paidAmount: 10000000,
     paymentOption: 'DP',
-    paymentMethod: 'Transfer BCA',
+    paymentMethod: 'Transfer Bank BCA',
     paymentDate: '',
     paymentNotes: ''
   });
@@ -198,7 +239,7 @@ export default function Finance() {
       totalAmount: p.totalAmount || 30000000,
       paidAmount: p.paidAmount || 0,
       paymentOption: (p.paymentOption as 'Bayar Lunas' | 'DP' | 'Belum Bayar') || 'DP',
-      paymentMethod: p.paymentMethod || 'Transfer BCA',
+      paymentMethod: p.paymentMethod || 'Transfer Bank BCA',
       paymentDate: p.paymentDate || p.registrationDate || todayStr,
       paymentNotes: p.paymentNotes || ''
     });
@@ -243,7 +284,7 @@ export default function Finance() {
         type: isLunas ? 'Pemasukan (Lunas)' : 'Pemasukan (DP)',
         category: 'Pendaftaran Umrah',
         amount: newPaid,
-        paymentMethod: editPilgrimPayForm.paymentMethod || 'Transfer BCA',
+        paymentMethod: editPilgrimPayForm.paymentMethod || 'Transfer Bank BCA',
         date: editPilgrimPayForm.paymentDate || todayStr,
         status: 'Berhasil',
         notes: editPilgrimPayForm.paymentNotes || 'Penyesuaian Data Pembayaran Jamaah',
@@ -316,25 +357,21 @@ export default function Finance() {
 
   // Quick Pay State
   const [payAmount, setPayAmount] = useState<number>(0);
-  const [payMethod, setPayMethod] = useState<string>('Transfer BCA');
+  const [payMethod, setPayMethod] = useState<string>('Transfer Bank BCA');
   const [payNotes, setPayNotes] = useState<string>('Pelunasan Sisa Tagihan Umrah');
 
   // Derived state: Combine payments (financeTransactions) and expenses (financeExpenses)
   const allFinanceTransactions = useMemo(() => {
     const combined = [...financeTransactions, ...financeExpenses];
-    return combined.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return combined.sort((a, b) => {
+  const aTime = (a as any).created_at ? new Date((a as any).created_at).getTime() : new Date(a.date).getTime();
+  const bTime = (b as any).created_at ? new Date((b as any).created_at).getTime() : new Date(b.date).getTime();
+  return bTime - aTime;
+});
   }, [financeTransactions, financeExpenses]);
 
-  // Core Calculations
-  const totalIncome = allFinanceTransactions
-    .filter(t => t.type.startsWith('Pemasukan') && t.status === 'Berhasil')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const totalExpense = allFinanceTransactions
-    .filter(t => t.type === 'Pengeluaran' && t.status === 'Berhasil')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const netBalance = totalIncome - totalExpense;
+  // Use finance summary from backend
+  const { total_income, total_expense, net_balance } = financeSummary;
 
   // Expense Breakdown Calculations
   const expenseByCategory = allFinanceTransactions
@@ -406,8 +443,8 @@ const handleSaveTransaction = async () => {
     return;
   }
 
-  const matchedPilgrim = pilgrims.find(p => p.name.toLowerCase() === txForm.pilgrimName?.toLowerCase());
-  const matchedId = matchedPilgrim ? matchedPilgrim.id : txForm.pilgrimId;
+  const matchedRegistration = registrations.find(r => r.full_name.toLowerCase() === txForm.pilgrimName?.toLowerCase());
+  const matchedId = matchedRegistration ? matchedRegistration.registration_id : txForm.pilgrimId;
 
   if (editingTxId) {
     updateTransaction(editingTxId, {
@@ -416,7 +453,7 @@ const handleSaveTransaction = async () => {
       type: (txForm.type || 'Pemasukan (DP)') as any,
       category: (txForm.category || 'Pendaftaran Umrah') as any,
       amount: Number(txForm.amount),
-      paymentMethod: txForm.paymentMethod || 'Transfer BCA',
+      paymentMethod: txForm.paymentMethod || 'Transfer Bank BCA',
       date: txForm.date || todayStr,
       notes: txForm.notes || '',
       referenceNo: txForm.referenceNo || `REF-${Math.floor(1000 + Math.random() * 9000)}`
@@ -436,13 +473,15 @@ const handleSaveTransaction = async () => {
     const payload = {
       amount: Number(txForm.amount),
       payment_type: paymentType,
-      payment_method: txForm.paymentMethod || 'Transfer BCA',
+      payment_method: txForm.paymentMethod || 'Transfer Bank BCA',
       payment_date: txForm.date || todayStr,
       notes: txForm.notes || ''
     };
     try {
       const created = await financeService.createPayment(matchedId, payload);
-      addTransaction(created);
+      // Refresh finance transactions to include the new payment
+      const refreshed = await financeService.getPayments();
+      setFinanceTransactions(refreshed);
       toast("Pemasukan baru berhasil dicatat.", "success");
     } catch (e) {
       toast(`Gagal mencatat pemasukan: ${e instanceof Error ? e.message : String(e)}`,
@@ -477,7 +516,12 @@ const handleSaveTransaction = async () => {
       try {
         const updated = await expenseService.updateExpense(expenseForm.id, payload);
         // Replace the edited expense in financeExpenses store
-        setFinanceExpenses(financeExpenses.map(e => e.id === updated.id ? updated : e));
+        const newExpenses = financeExpenses.map(e => e.id === updated.id ? updated : e);
+        setFinanceExpenses(newExpenses);
+        // If detail modal showing this expense, update it
+        if (selectedDetailTx && selectedDetailTx.id === updated.id) {
+          setSelectedDetailTx(updated);
+        }
         toast("Catatan pengeluaran berhasil diperbarui.", "success");
         setIsExpenseModalOpen(false);
       } catch (e) {
@@ -516,7 +560,7 @@ const handleSaveTransaction = async () => {
       vendorName: tx.pilgrimName,
       category: tx.category || 'Operasional',
       amount: tx.amount,
-      paymentMethod: tx.paymentMethod || 'Transfer BCA',
+      paymentMethod: tx.paymentMethod || 'Transfer Bank BCA',
       date: tx.date || todayStr,
       referenceNo: tx.referenceNo || '',
       notes: tx.notes || ''
@@ -531,7 +575,7 @@ const handleSaveTransaction = async () => {
     const remaining = Math.max(0, total - paid);
     setSelectedPilgrimForPay(p);
     setPayAmount(remaining);
-    setPayMethod('Transfer BCA');
+    setPayMethod('Transfer Bank BCA');
     setPayNotes(`Pelunasan tagihan sisa Umrah a/n ${p.name}`);
     setIsPayModalOpen(true);
   };
@@ -556,8 +600,12 @@ const handleConfirmQuickPay = async () => {
     payment_date: todayStr,
     notes: payNotes,
   };
+  
+  const matchedRegistration = registrations.find(r => r.full_name.toLowerCase() === selectedPilgrimForPay.name.toLowerCase());
+  const realRegistrationId = matchedRegistration ? matchedRegistration.registration_id : selectedPilgrimForPay.id;
+  
   try {
-    const created = await financeService.createPayment(selectedPilgrimForPay.id, payload);
+    const created = await financeService.createPayment(realRegistrationId, payload);
     // Update pilgrim only after successful payment creation
     updatePilgrim(selectedPilgrimForPay.id, {
       paidAmount: newPaid,
@@ -680,7 +728,7 @@ const handleConfirmQuickPay = async () => {
               <div className="space-y-1">
                 <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">TOTAL PEMASUKAN KAS</p>
                 <p className="text-2xl sm:text-[26px] font-bold tracking-tight text-gray-900">
-                  Rp {totalIncome.toLocaleString('id-ID')}
+                  Rp {financeSummary.total_income.toLocaleString('id-ID')}
                 </p>
               </div>
               <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 shadow-2xs">
@@ -708,7 +756,7 @@ const handleConfirmQuickPay = async () => {
               <div className="space-y-1">
                 <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">TOTAL PIUTANG JAMAAH</p>
                 <p className="text-2xl sm:text-[26px] font-bold tracking-tight text-amber-900">
-                  Rp {totalReceivables.toLocaleString('id-ID')}
+                  Rp {financeSummary.total_receivable.toLocaleString('id-ID')}
                 </p>
               </div>
               <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 shadow-2xs">
@@ -736,7 +784,7 @@ const handleConfirmQuickPay = async () => {
               <div className="space-y-1">
                 <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">TOTAL PENGELUARAN KAS</p>
                 <p className="text-2xl sm:text-[26px] font-bold tracking-tight text-gray-900">
-                  Rp {totalExpense.toLocaleString('id-ID')}
+                  Rp {financeSummary.total_expense.toLocaleString('id-ID')}
                 </p>
               </div>
               <div className="w-10 h-10 rounded-full bg-red-50 text-red-600 flex items-center justify-center shrink-0 shadow-2xs">
@@ -763,15 +811,15 @@ const handleConfirmQuickPay = async () => {
             <div className="flex justify-between items-start">
               <div className="space-y-1">
                 <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">SALDO BERSIH (NET KAS)</p>
-                <p className={`text-2xl sm:text-[26px] font-bold tracking-tight ${netBalance >= 0 ? 'text-emerald-800' : 'text-red-600'}`}>
-                  Rp {netBalance.toLocaleString('id-ID')}
+                <p className={`text-2xl sm:text-[26px] font-bold tracking-tight ${net_balance >= 0 ? 'text-emerald-800' : 'text-red-600'}`}>
+                  Rp {net_balance.toLocaleString('id-ID')}
                 </p>
               </div>
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-2xs ${netBalance >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-2xs ${net_balance >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
                 <Wallet className="w-5 h-5" />
               </div>
             </div>
-            <div className={`flex items-center gap-1.5 text-xs font-medium ${netBalance >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+            <div className={`flex items-center gap-1.5 text-xs font-medium ${net_balance >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
               <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
               <span>Arus Kas Bersih Terkalkulasi</span>
             </div>
@@ -1509,9 +1557,9 @@ const handleConfirmQuickPay = async () => {
                       value={txForm.pilgrimName || ''}
                       onChange={(e) => {
                         const val = e.target.value;
-                        const matched = pilgrims.find(p => p.name.toLowerCase() === val.toLowerCase() || `${p.id} - ${p.name}`.toLowerCase() === val.toLowerCase());
+                        const matched = registrations.find(r => r.full_name.toLowerCase() === val.toLowerCase() || `${r.registration_number} - ${r.full_name}`.toLowerCase() === val.toLowerCase());
                         if (matched) {
-                          setTxForm({ ...txForm, pilgrimName: matched.name, pilgrimId: matched.id });
+                          setTxForm({ ...txForm, pilgrimName: matched.full_name, pilgrimId: matched.registration_id });
                         } else {
                           setTxForm({ ...txForm, pilgrimName: val });
                         }
@@ -1520,8 +1568,8 @@ const handleConfirmQuickPay = async () => {
                       className={`h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base ${txForm.pilgrimName ? 'font-bold text-gray-900' : 'font-normal text-gray-400'} placeholder:text-gray-400 placeholder:font-normal px-4 sm:px-5 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859] w-full`}
                     />
                     <datalist id="pilgrim-datalist-finance">
-                      {pilgrims.map(p => (
-                        <option key={p.id} value={p.name}>{p.id} - {p.name} ({p.paymentOption || 'Belum Lunas'})</option>
+                      {registrations.map(r => (
+                        <option key={r.registration_id} value={r.full_name}>{r.registration_number} - {r.full_name}</option>
                       ))}
                     </datalist>
                   </div>
@@ -2032,15 +2080,23 @@ const handleConfirmQuickPay = async () => {
             >
               <Printer className="w-4 h-4 mr-1.5" /> Cetak Bukti Kuitansi
             </Button>
-            {selectedDetailTx && (
-              <Button 
-                variant="outline"
-                className="font-semibold text-xs text-blue-700 border-blue-200 hover:bg-blue-50"
-                onClick={() => handleEditTransaction(selectedDetailTx)}
-              >
-                <Edit2 className="w-3.5 h-3.5 mr-1.5 text-blue-600" /> Edit Isian Transaksi
-              </Button>
-            )}
+          {selectedDetailTx && (
+            <Button
+              variant="outline"
+              className="font-semibold text-xs text-blue-700 border-blue-200 hover:bg-blue-50"
+              onClick={() => {
+                if (selectedDetailTx.type === 'Pengeluaran') {
+                  // Use expense edit flow for expenses
+                  handleEditExpense(selectedDetailTx);
+                } else {
+                  // Use general transaction edit flow for incomes
+                  handleEditTransaction(selectedDetailTx);
+                }
+              }}
+            >
+              <Edit2 className="w-3.5 h-3.5 mr-1.5 text-blue-600" /> Edit Isian Transaksi
+            </Button>
+          )}
             <Button className="font-semibold text-xs bg-[#740A03] hover:bg-[#580802] text-white" onClick={() => setIsTxDetailModalOpen(false)}>
               Tutup
             </Button>
