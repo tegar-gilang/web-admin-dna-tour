@@ -26,6 +26,12 @@ export interface BackendRegistration {
   equipments: { equipment_name: string; is_received: boolean; size: string | null }[];
 }
 
+export interface RegistrationOption {
+  registration_id: string;
+  full_name: string;
+  registration_number: string;
+}
+
 export const registrationService = {
   async getRegistrations(params?: { q?: string; status?: string; package_id?: string; kloter_id?: string }): Promise<Pilgrim[]> {
     const queryParams = new URLSearchParams();
@@ -36,10 +42,34 @@ export const registrationService = {
 
     const queryString = queryParams.toString();
     const url = queryString ? `/registrations?${queryString}` : '/registrations';
-    
+
     const response = await apiClient<{ data: BackendRegistration[] }>(url);
-    
+
     return response.data.map(mapBackendToPilgrim);
+  },
+
+  // Ditambahkan dari branch finance — dipakai untuk dropdown pilih pendaftar
+  async getRegistrationOptions(): Promise<RegistrationOption[]> {
+    try {
+      const response = await apiClient<any>('/registrations', { method: 'GET' });
+      let list: any[] = [];
+      if (response.data && Array.isArray(response.data.data)) {
+        list = response.data.data;
+      } else if (Array.isArray(response.data)) {
+        list = response.data;
+      } else if (Array.isArray(response)) {
+        list = response;
+      }
+
+      return list.map((item: any) => ({
+        registration_id: item.id ? String(item.id) : (item.registration_id ? String(item.registration_id) : ''),
+        full_name: item.full_name || '',
+        registration_number: item.registration_number || '',
+      }));
+    } catch (error) {
+      console.error('Failed to fetch registrations:', error);
+      throw error;
+    }
   },
 
   async getRegistration(id: string): Promise<Pilgrim> {
@@ -80,7 +110,7 @@ export const registrationService = {
 
 function mapPilgrimToBackend(p: Partial<Pilgrim>, packages: any[], groups: any[]): any {
   const computeBirthDate = (age?: number) => {
-    if (!age) return '1990-01-01'; // Default dummy if no age
+    if (!age) return '1990-01-01';
     const year = new Date().getFullYear() - age;
     return `${year}-01-01`;
   };
@@ -91,7 +121,6 @@ function mapPilgrimToBackend(p: Partial<Pilgrim>, packages: any[], groups: any[]
     return 'unpaid';
   };
 
-  // Find UUIDs from names
   const pkg = packages.find(x => x.name === p.umrahPackage);
   const grp = groups.find(x => x.name === p.group || x.kloter === p.group);
 
@@ -105,7 +134,7 @@ function mapPilgrimToBackend(p: Partial<Pilgrim>, packages: any[], groups: any[]
     gender: p.gender === 'Perempuan' ? 'P' : 'L',
     registration_date: p.registrationDate || new Date().toISOString().split('T')[0],
     departure_date: p.departureDate || null,
-    package_id: pkg?.id, // Must exist to pass validation
+    package_id: pkg?.id,
     kloter_id: grp?.id || null,
     meningitis_vaccine_status: p.meningitis ? 'sudah_vaksin' : 'belum_vaksin',
     photo_status: p.photo ? 'sudah_menyerahkan' : 'belum_ada',
@@ -126,12 +155,11 @@ function mapPilgrimToBackend(p: Partial<Pilgrim>, packages: any[], groups: any[]
     ]
   };
 
-  // If there's initial payment
   if (p.paidAmount && p.paidAmount > 0) {
     payload.initial_payment = {
       amount: Number(p.paidAmount),
       payment_type: p.paymentOption === 'Bayar Lunas' ? 'full_payment' : 'down_payment',
-      payment_method: 'bca_transfer', // Frontend doesn't map strictly, default to bca
+      payment_method: 'bca_transfer',
       payment_date: p.paymentDate || payload.registration_date
     };
   }
@@ -166,7 +194,6 @@ function mapBackendToPilgrim(backend: BackendRegistration): Pilgrim {
     gender: backend.gender === 'L' ? 'Laki-laki' : 'Perempuan',
     age: backend.birth_date ? calculateAge(backend.birth_date) : 0,
     phone: backend.phone,
-    
     birthDate: backend.birth_date,
     registrationDate: backend.registration_date,
     departureDate: backend.departure_date || '',
@@ -174,7 +201,6 @@ function mapBackendToPilgrim(backend: BackendRegistration): Pilgrim {
     ktp: backend.nik,
     meningitis: backend.meningitis_vaccine_status === 'sudah_vaksin',
     photo: backend.photo_status === 'sudah_menyerahkan',
-    
     koperBesar: hasEquipment('Koper Besar'),
     koperKabin: hasEquipment('Koper Kabin'),
     batik: hasEquipment('Seragam Batik'),
@@ -186,7 +212,6 @@ function mapBackendToPilgrim(backend: BackendRegistration): Pilgrim {
     tasSelempang: hasEquipment('Tas Selempang'),
     tasSandal: hasEquipment('Tas Sandal'),
     syall: hasEquipment('Syall'),
-
     paymentOption: mapStatus(backend.status),
     totalAmount: Number(backend.total_package_cost),
     paidAmount: Number(backend.total_paid),

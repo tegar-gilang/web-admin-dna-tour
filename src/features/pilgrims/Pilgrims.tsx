@@ -284,7 +284,9 @@ export default function Pilgrims() {
   const handleExportExcel = async () => {
     try {
       const totalIncome = financeTransactions.filter(t => t.type.startsWith('Pemasukan') && t.status === 'Berhasil').reduce((sum, t) => sum + t.amount, 0);
-      const totalExpense = financeTransactions.filter(t => t.type === 'Pengeluaran' && t.status === 'Berhasil').reduce((sum, t) => sum + t.amount, 0);
+      const totalExpense = financeExpenses
+        .filter(t => t.type === 'Pengeluaran')
+        .reduce((sum, t) => sum + t.amount, 0);
       const netBalance = totalIncome - totalExpense;
 
       const targetPilgrims = filteredPilgrims.length > 0 ? filteredPilgrims : pilgrims;

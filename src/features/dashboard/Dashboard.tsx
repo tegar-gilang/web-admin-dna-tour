@@ -76,7 +76,7 @@ export default function Dashboard() {
     .filter(t => t.type.startsWith('Pemasukan') && t.status === 'Berhasil')
     .reduce((sum, t) => sum + t.amount, 0);
 
-  const totalExpense = financeTransactions
+  const totalExpense = financeExpenses
     .filter(t => t.type === 'Pengeluaran' && t.status === 'Berhasil')
     .reduce((sum, t) => sum + t.amount, 0);
 
@@ -190,7 +190,7 @@ export default function Dashboard() {
       const financeSheet = {
         sheetName: 'Keuangan & Arus Kas',
         title: 'Laporan Buku Kas & Arus Keuangan - DNA Tour',
-        data: financeTransactions.map(t => ({
+        data: [...financeTransactions, ...financeExpenses].map(t => ({
           'ID Transaksi': t.id,
           'Uraian Transaksi': t.pilgrimName,
           'Tipe': t.type,
