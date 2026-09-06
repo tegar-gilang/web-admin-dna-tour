@@ -190,10 +190,17 @@ export default function Reports() {
   }, [filteredFinance]);
 
   const totalExpense = useMemo(() => {
-    return filteredFinance
-      .filter(t => t.type === 'Pengeluaran' && t.status === 'Berhasil')
-      .reduce((sum, t) => sum + t.amount, 0);
-  }, [filteredFinance]);
+    const filteredExpenses = financeExpenses.filter(t => {
+      const matchesDate = (!startDate || t.date >= startDate) && (!endDate || t.date <= endDate);
+      const matchesSearch = !searchQuery.trim()
+        || t.pilgrimName?.toLowerCase().includes(searchQuery.toLowerCase())
+        || t.category?.toLowerCase().includes(searchQuery.toLowerCase())
+        || t.type?.toLowerCase().includes(searchQuery.toLowerCase())
+        || (t.referenceNo && t.referenceNo.toLowerCase().includes(searchQuery.toLowerCase()));
+      return matchesDate && matchesSearch;
+    });
+    return filteredExpenses.reduce((sum, t) => sum + t.amount, 0);
+  }, [financeExpenses, startDate, endDate, searchQuery]);
 
   const netBalance = totalIncome - totalExpense;
 

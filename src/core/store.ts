@@ -298,6 +298,18 @@ type StoreState = {
   addTransaction: (tx: FinanceTransaction) => void;
   updateTransaction: (id: string, updates: Partial<FinanceTransaction>) => void;
   deleteTransaction: (id: string) => void;
+  setFinanceTransactions: (txs: FinanceTransaction[]) => void;
+  isFetchingFinance: boolean;
+  financeFetchError: string | null;
+  setFinanceLoading: (isLoading: boolean) => void;
+  setFinanceError: (error: string | null) => void;
+
+  financeExpenses: FinanceTransaction[];
+  setFinanceExpenses: (expenses: FinanceTransaction[]) => void;
+  isFetchingExpenses: boolean;
+  expenseFetchError: string | null;
+  setExpenseLoading: (isLoading: boolean) => void;
+  setExpenseError: (error: string | null) => void;
 
   // Broadcast actions
   addBroadcast: (b: BroadcastItem) => void;
@@ -1737,6 +1749,21 @@ export const useStore = create<StoreState>((set) => ({
       trashItems: [trash, ...state.trashItems]
     };
   }),
+  setFinanceTransactions: (txs) => set((state) => ({
+    financeTransactions: txs,
+    pilgrims: syncPilgrimPaymentsWithTxs(state.pilgrims, txs)
+  })),
+  isFetchingFinance: false,
+  financeFetchError: null,
+  setFinanceLoading: (isLoading) => set({ isFetchingFinance: isLoading }),
+  setFinanceError: (error) => set({ financeFetchError: error }),
+
+  financeExpenses: [],
+  setFinanceExpenses: (expenses) => set({ financeExpenses: expenses }),
+  isFetchingExpenses: false,
+  expenseFetchError: null,
+  setExpenseLoading: (isLoading) => set({ isFetchingExpenses: isLoading }),
+  setExpenseError: (error) => set({ expenseFetchError: error }),
 
   // Broadcast actions
   addBroadcast: (b) => set((state) => {
