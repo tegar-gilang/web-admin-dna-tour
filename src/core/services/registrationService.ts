@@ -24,6 +24,7 @@ export interface BackendRegistration {
   kloter?: { name: string } | null;
   payments: any[];
   equipments: { equipment_name: string; is_received: boolean; size: string | null }[];
+  pilgrim_id: string | null;
 }
 
 export interface RegistrationOption {
@@ -83,6 +84,7 @@ export const registrationService = {
       method: 'POST',
       body: JSON.stringify(payload)
     });
+    console.log('Response dari POST /registrations:', response.data);
     return mapBackendToPilgrim(response.data);
   },
 
@@ -136,6 +138,7 @@ function mapPilgrimToBackend(p: Partial<Pilgrim>, packages: any[], groups: any[]
     departure_date: p.departureDate || null,
     package_id: pkg?.id,
     kloter_id: grp?.id || null,
+    pilgrim_id: p.pilgrimId || null,
     meningitis_vaccine_status: p.meningitis ? 'sudah_vaksin' : 'belum_vaksin',
     photo_status: p.photo ? 'sudah_menyerahkan' : 'belum_ada',
     total_package_cost: Number(p.totalAmount) || 30000000,
@@ -193,6 +196,7 @@ function mapBackendToPilgrim(backend: BackendRegistration): Pilgrim {
     group: backend.kloter?.name || 'Belum Ada',
     gender: backend.gender === 'L' ? 'Laki-laki' : 'Perempuan',
     age: backend.birth_date ? calculateAge(backend.birth_date) : 0,
+    pilgrimId: backend.pilgrim_id || '',
     phone: backend.phone,
     birthDate: backend.birth_date,
     registrationDate: backend.registration_date,

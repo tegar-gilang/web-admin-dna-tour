@@ -18,6 +18,7 @@ const getInitialAuth = () => {
 
 export type Pilgrim = {
   id: string;
+  pilgrimId?: string;
   formId?: string;
   name: string;
   passport: string;

@@ -163,6 +163,7 @@ export default function Registration() {
         p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
         (p.passport && p.passport.toLowerCase().includes(searchTerm.toLowerCase())) ||
         p.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (p.pilgrimId && p.pilgrimId.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (p.formId && p.formId.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (p.ktp && p.ktp.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (p.phone && p.phone.toLowerCase().includes(searchTerm.toLowerCase())) ||
@@ -225,6 +226,7 @@ export default function Registration() {
     setModalMode('edit');
     setFormData({ 
       id: '',
+      pilgrimId: '',
       formId: newFormId,
       name: '',
       gender: '', 
@@ -308,7 +310,7 @@ export default function Registration() {
   };
 
   const savePilgrim = async () => {
-    if (!formData.id || !formData.id.trim()) {
+    if (!formData.pilgrimId || !formData.pilgrimId.trim()) {
       toast("ID Jamaah wajib diisi.", "error");
       return;
     }
@@ -374,6 +376,7 @@ export default function Registration() {
   const handleExportExcel = () => {
     const exportData = filteredPilgrims.map(p => ({
       'ID Pendaftaran': p.id,
+      'ID Jamaah': p.pilgrimId || '-',
       'Form ID': p.formId || '-',
       'Nama Lengkap': p.name,
       'No. Paspor': p.passport || '-',
@@ -880,7 +883,7 @@ export default function Registration() {
                     {/* ID JAMAAH */}
                     <TableCell className="py-4 whitespace-nowrap">
                       <div className="font-bold text-sm tracking-tight text-[#480c0c] whitespace-nowrap">
-                        {pilgrim.id}
+                        {pilgrim.pilgrimId || '-'}
                       </div>
                     </TableCell>
 
@@ -1143,7 +1146,7 @@ export default function Registration() {
                         <span>ID Jamaah</span>
                       </div>
                       <span className="font-bold text-gray-900 text-sm text-right font-mono">
-                        {activePilgrim?.id || '-'}
+                        {activePilgrim?.pilgrimId || '-'}
                       </span>
                     </div>
 
@@ -1443,7 +1446,7 @@ export default function Registration() {
                       <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
                         <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">ID JAMAAH *</label>
                         <div className="sm:col-span-8">
-                          <Input value={formData.id || ''} onChange={(e) => setFormData({...formData, id: e.target.value})} placeholder="Cth. REG-1001 / PL-88210" className={`h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base ${formData.id ? 'font-bold text-gray-900' : 'font-normal text-gray-400'} placeholder:text-gray-400 placeholder:font-normal px-4 sm:px-5 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859]`} />
+                          <Input value={formData.pilgrimId || ''} onChange={(e) => setFormData({...formData, pilgrimId: e.target.value})} placeholder="Cth. REG-1001 / PL-88210" className={`h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base ${formData.pilgrimId ? 'font-bold text-gray-900' : 'font-normal text-gray-400'} placeholder:text-gray-400 placeholder:font-normal px-4 sm:px-5 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859]`} />
                         </div>
                       </div>
                       {/* NAMA LENGKAP */}
