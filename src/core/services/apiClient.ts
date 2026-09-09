@@ -65,7 +65,10 @@ export async function apiClient<T>(
       localStorage.removeItem('auth_user');
     }
 
-    throw new Error(errorMessage);
+    const error: any = new Error(errorMessage);
+    error.status = response.status;
+    error.errors = data?.errors;
+    throw error;
   }
 
   return data as T;

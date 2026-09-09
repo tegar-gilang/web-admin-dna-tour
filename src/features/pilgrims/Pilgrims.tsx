@@ -1,47 +1,58 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { toast } from '@/lib/toast';
 import { ConfirmDeleteDialog } from '@/components/ui/ConfirmDeleteDialog';
-import { Card, CardContent } from '@/components/ui/Card';
+import { Card } from '@/components/ui/Card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table';
-import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { 
   Search, Filter, UserPlus, Trash2, Edit2, Eye,
   Users, CreditCard, BookOpen, FileCheck, Phone, 
-  AlertCircle, Package, Building2, PlaneTakeoff, PlaneLanding, X, FileSpreadsheet,
-  CheckCircle2, Clock, HeartPulse, Check, Sparkles, Luggage, Shield,
-  ArrowRight, UserCheck, AlertTriangle, Calendar, User, FileText, Flag
+  X, FileSpreadsheet, Flag, FileText, AlertTriangle,
+  Calendar, User, RefreshCw
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/Checkbox';
-import { useStore, Pilgrim } from '@/core/store';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/Dialog';
+import { useStore, Pilgrim, Group, Package } from '@/core/store';
+import { Dialog, DialogContent } from '@/components/ui/Dialog';
 import { exportMasterWorkbookToExcel } from '@/lib/export';
+import { jamaahService, JamaahPayload, buildJamaahPayload } from '@/core/services/jamaahService';
+import { packageService } from '@/core/services/packageService';
+import { kloterService } from '@/core/services/kloterService';
 
 export default function Pilgrims() {
 
 // ==========================================
-// FITUR: PILGRIMS
-// Komponen utama untuk fitur PILGRIMS
+// FITUR: JAMAAH MASTER DATA (/api/jamaah)
+// Implementasi Tahap 3B: Tambah & Edit via API
 // ==========================================
 
   const { 
-    pilgrims, 
-    addPilgrim, 
-    updatePilgrim, 
-    deletePilgrims, 
-    groups,
+    groups: storeGroups,
     tourLeaders,
     mutawifs,
     schedules,
     emergencies,
     rooms,
     staffStocks,
-    financeTransactions
+    financeTransactions,
+    financeExpenses
   } = useStore();
 
+  // State Data API Master Jamaah
+  const [jamaahList, setJamaahList] = useState<Pilgrim[]>([]);
+  const [isJamaahLoading, setIsJamaahLoading] = useState<boolean>(true);
+  const [jamaahFetchError, setJamaahFetchError] = useState<string | null>(null);
+  const [hasFetched, setHasFetched] = useState<boolean>(false);
+
+  // State Relasi Paket & Kloter dari Backend API
+  const [packagesList, setPackagesList] = useState<Package[]>([]);
+  const [klotersList, setKlotersList] = useState<Group[]>([]);
+  const [packageFetchError, setPackageFetchError] = useState<string | null>(null);
+  const [kloterFetchError, setKloterFetchError] = useState<string | null>(null);
+
+  // State Filter & Navigasi UI
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState<'all' | 'male' | 'female' | 'elderly' | 'unassigned' | 'unpaid'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'male' | 'female' | 'elderly' | 'unassigned'>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [filterPackage, setFilterPackage] = useState("");
   const [filterGroup, setFilterGroup] = useState("");
@@ -52,15 +63,51 @@ export default function Pilgrims() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   
-  // Modal states
+  // State Modal Detail & Form Edit/Tambah
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
-  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isFormAddMode, setIsFormAddMode] = useState<boolean>(false);
   const [selectedPilgrim, setSelectedPilgrim] = useState<Pilgrim | null>(null);
+  const [isDetailLoading, setIsDetailLoading] = useState<boolean>(false);
+  const [detailFetchError, setDetailFetchError] = useState<string | null>(null);
   const [modalTab, setModalTab] = useState<'data-diri' | 'form-edit'>('data-diri');
   const [formData, setFormData] = useState<Partial<Pilgrim>>({});
-  const [modifiedDates, setModifiedDates] = useState<{ [key: string]: boolean }>({});
+  
+  // State Submit & Error Validasi Backend (422)
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
+  const activeDetailUuidRef = useRef<string | null>(null);
 
   const todayStr = new Date().toISOString().split('T')[0];
+
+  // Fetch Data Master Jamaah dari GET /api/jamaah
+  const fetchJamaahList = useCallback(async () => {
+    setIsJamaahLoading(true);
+    setJamaahFetchError(null);
+    try {
+      const data = await jamaahService.getJamaahList();
+      setJamaahList(data);
+      setHasFetched(true);
+    } catch (err: any) {
+      console.error("Gagal memuat data master jamaah dari /api/jamaah:", err);
+      setJamaahFetchError(err.message || "Gagal memuat data jamaah dari server.");
+    } finally {
+      setIsJamaahLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchJamaahList();
+    // Load relasi paket & kloter murni dari API
+    packageService.getPackages().then(setPackagesList).catch(err => {
+      console.error("Gagal memuat daftar paket:", err);
+      setPackageFetchError("Gagal memuat daftar paket dari API.");
+    });
+    kloterService.getKloters().then(setKlotersList).catch(err => {
+      console.error("Gagal memuat daftar kloter:", err);
+      setKloterFetchError("Gagal memuat daftar kloter dari API.");
+    });
+  }, [fetchJamaahList]);
 
   const formatIndoDate = (dateStr?: string, fallback: string = '-') => {
     if (!dateStr) return fallback;
@@ -74,49 +121,44 @@ export default function Pilgrims() {
     }
   };
 
-  // Stats Calculations
-  const totalPilgrims = pilgrims.length;
-  const totalMale = pilgrims.filter(p => p.gender === 'Laki-laki' || p.gender === 'L').length;
-  const totalFemale = pilgrims.filter(p => p.gender === 'Perempuan' || p.gender === 'P').length;
-  const totalElderly = pilgrims.filter(p => (p.age || 0) >= 60).length;
-  const totalUnassigned = pilgrims.filter(p => !p.group || p.group === '-' || p.group === 'Belum ada kloter').length;
-  const totalPassportReady = pilgrims.filter(p => p.passport && p.passport.trim().length > 3).length;
-  const totalLunas = pilgrims.filter(p => p.paymentOption === 'Bayar Lunas' || ((p.paidAmount || 0) >= (p.totalAmount || 30000000) && (p.totalAmount || 0) > 0)).length;
-  const totalUnpaid = totalPilgrims - totalLunas;
+  // Statistik Murni dari Respons Backend API
+  const totalPilgrims = jamaahList.length;
+  const totalMale = jamaahList.filter(p => p.gender === 'Laki-laki' || p.gender === 'L' || p.gender === 'Pria (Male)').length;
+  const totalFemale = jamaahList.filter(p => p.gender === 'Perempuan' || p.gender === 'P' || p.gender === 'Wanita (Female)').length;
+  const totalElderly = jamaahList.filter(p => (p.age || 0) >= 60).length;
+  const totalUnassigned = jamaahList.filter(p => !p.group || p.group === '-' || p.group === 'Belum ada kloter').length;
+  const totalPassportReady = jamaahList.filter(p => p.passport && p.passport.trim().length > 3).length;
 
   const uniqueDepartureDates = useMemo(() => {
     const dates = new Set<string>();
-    pilgrims.forEach(p => {
+    jamaahList.forEach(p => {
       if (p.departureDate && p.departureDate.trim() && p.departureDate !== '-') {
         dates.add(p.departureDate);
       }
     });
     return Array.from(dates);
-  }, [pilgrims]);
+  }, [jamaahList]);
 
-  // Filtered logic
+  // Logika Filter Data Jamaah
   const filteredPilgrims = useMemo(() => {
-    return pilgrims.filter(p => {
-      // Tab filter
-      if (activeTab === 'male' && !(p.gender === 'Laki-laki' || p.gender === 'L')) return false;
-      if (activeTab === 'female' && !(p.gender === 'Perempuan' || p.gender === 'P')) return false;
+    return jamaahList.filter(p => {
+      // Tab Filter
+      if (activeTab === 'male' && !(p.gender === 'Laki-laki' || p.gender === 'L' || p.gender === 'Pria (Male)')) return false;
+      if (activeTab === 'female' && !(p.gender === 'Perempuan' || p.gender === 'P' || p.gender === 'Wanita (Female)')) return false;
       if (activeTab === 'elderly' && (p.age || 0) < 60) return false;
       if (activeTab === 'unassigned' && (p.group && p.group !== '-' && p.group !== 'Belum ada kloter')) return false;
-      if (activeTab === 'unpaid') {
-        const isPaid = p.paymentOption === 'Bayar Lunas' || ((p.paidAmount || 0) >= (p.totalAmount || 30000000) && (p.totalAmount || 0) > 0);
-        if (!isPaid) return false;
-      }
 
-      // Search term
-      const matchesSearch = 
+      // Search Query
+      const displayId = p.pilgrimId || p.formId || p.id;
+      const matchesSearch = !searchTerm.trim() ||
         p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
         (p.passport && p.passport.toLowerCase().includes(searchTerm.toLowerCase())) ||
         p.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (p.formId && p.formId.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        displayId.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (p.phone && p.phone.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (p.group && p.group.toLowerCase().includes(searchTerm.toLowerCase()));
 
-      // Dropdown filters
+      // Dropdown Filters
       const matchesPackage = filterPackage ? p.umrahPackage === filterPackage : true;
       const matchesGroup = filterGroup ? p.group === filterGroup : true;
       const matchesDeparture = filterDepartureDate ? (
@@ -133,7 +175,7 @@ export default function Pilgrims() {
 
       return matchesSearch && matchesPackage && matchesGroup && matchesDeparture && matchesPassport;
     });
-  }, [pilgrims, activeTab, searchTerm, filterPackage, filterGroup, filterDepartureDate, filterPassportStatus]);
+  }, [jamaahList, activeTab, searchTerm, filterPackage, filterGroup, filterDepartureDate, filterPassportStatus]);
 
   const toggleSelectAll = () => {
     if (selectedIds.size === filteredPilgrims.length) {
@@ -154,131 +196,240 @@ export default function Pilgrims() {
     setIsDeleteDialogOpen(true);
   };
 
-  const confirmDelete = () => {
-    deletePilgrims(Array.from(selectedIds));
-    setSelectedIds(new Set());
-    toast("Data jamaah berhasil dihapus.", "success");
+  const confirmDelete = async () => {
+    const idsToDelete = Array.from(selectedIds);
+    if (idsToDelete.length === 0) {
+      setIsDeleteDialogOpen(false);
+      return;
+    }
+    setIsDeleting(true);
+    let successCount = 0;
+    const failures: string[] = [];
+    for (const id of idsToDelete) {
+      try {
+        await jamaahService.deleteJamaah(id);
+        successCount++;
+      } catch (err: any) {
+        console.error(`Gagal menghapus jamaah UUID ${id}:`, err);
+        failures.push(id);
+      }
+    }
+    setIsDeleting(false);
+    setIsDeleteDialogOpen(false);
+    if (failures.length === 0) {
+      setSelectedIds(new Set());
+      toast(
+        successCount === 1
+          ? "1 data jamaah berhasil dihapus dari backend."
+          : `${successCount} data jamaah berhasil dihapus dari backend.`,
+        "success"
+      );
+    } else {
+      // Clear only successfully deleted IDs; keep failed ones selected so user can retry
+      setSelectedIds(new Set(failures));
+      toast(
+        `${successCount} berhasil dihapus, ${failures.length} gagal. Silakan coba lagi untuk yang gagal.`,
+        "error"
+      );
+    }
+    // Refresh list regardless
+    try {
+      await fetchJamaahList();
+    } catch {
+      toast("Data dihapus dari server, namun gagal memperbarui tabel. Klik Refresh.", "info");
+    }
   };
 
-  // Open modal for detail
-  const openDetailModal = (p: Pilgrim) => {
+  // Open Detail Modal (GET /api/jamaah/{id})
+  const openDetailModal = async (p: Pilgrim) => {
+    const targetUuid = p.id; // UUID backend
+    activeDetailUuidRef.current = targetUuid;
+
     setSelectedPilgrim(p);
     setFormData({ ...p });
-    setModifiedDates({ departureDate: true, returnDate: true, registrationDate: true });
+    setDetailFetchError(null);
+    setFieldErrors({});
     setModalTab('data-diri');
+    setIsFormAddMode(false);
     setIsFormModalOpen(true);
+    setIsDetailLoading(true);
+
+    try {
+      const detailData = await jamaahService.getJamaahDetail(targetUuid);
+      if (activeDetailUuidRef.current === targetUuid) {
+        setSelectedPilgrim(detailData);
+        setFormData({ ...detailData });
+      }
+    } catch (err: any) {
+      if (activeDetailUuidRef.current === targetUuid) {
+        console.error(`Gagal mengambil detail jamaah UUID ${targetUuid}:`, err);
+        setDetailFetchError(err.message || "Gagal memuat detail jamaah dari server.");
+      }
+    } finally {
+      if (activeDetailUuidRef.current === targetUuid) {
+        setIsDetailLoading(false);
+      }
+    }
   };
 
-  // Open modal for add
+  // Open Add Modal (POST /api/jamaah)
   const openAddModal = () => {
-    const newId = `PL-${Math.floor(80000 + Math.random() * 10000)}`;
-    const newFormId = `FRM-${Math.floor(100 + Math.random() * 900)}`;
     setSelectedPilgrim(null);
-    setModifiedDates({});
-    setModalTab('form-edit');
+    setIsFormAddMode(true);
+    setFieldErrors({});
+    const randomSuffix = Math.floor(100 + Math.random() * 900);
     setFormData({
-      id: newId,
-      formId: newFormId,
+      pilgrimId: `JMH-${randomSuffix}`,
+      ktp: '',
       name: '',
+      gender: 'Laki-laki',
+      birthDate: '',
+      phone: '',
+      emergencyContact: '',
       passport: '',
       visaNumber: '',
       nationality: 'Indonesia',
-      gender: '' as any,
-      birthDate: '',
-      age: undefined,
-      phone: '',
-      emergencyContact: '',
-      group: '',
-      tourLeader: '',
-      mutawifLocal: '',
-      umrahPackage: '',
+      packageId: '',
+      kloterId: '',
       hotelMakkah: '',
-      hotel: '',
+      hotelMadinah: '',
       departureDate: '',
       returnDate: '',
-      ktp: '',
-      registrationDate: todayStr,
-      totalAmount: undefined,
-      paidAmount: undefined,
-      paymentOption: '' as any,
-      paymentMethod: '',
-      koperBesar: false,
-      koperKabin: false,
-      batik: false,
-      kainIhram: false,
-      meningitis: false,
-      photo: false
+      tourLeader: '',
+      mutawifLocal: '',
+      status: 'active',
     });
-    setIsFormModalOpen(true);
-  };
-
-  const openEditModal = (p: Pilgrim) => {
-    setSelectedPilgrim(p);
-    setFormData({ ...p });
-    setModifiedDates({ departureDate: true, returnDate: true, registrationDate: true });
     setModalTab('form-edit');
     setIsFormModalOpen(true);
   };
 
-  const savePilgrim = () => {
-    if (!formData.id || !formData.id.trim()) {
-      toast("ID Jamaah wajib diisi.", "error");
+  // Open Edit Modal (PUT /api/jamaah/{id})
+  // Wajib mengambil detail terbaru via GET /api/jamaah/{uuid} sebelum mengizinkan edit/simpan
+  const openEditModal = async (p: Pilgrim) => {
+    const targetUuid = p.id;
+    activeDetailUuidRef.current = targetUuid;
+
+    setSelectedPilgrim(p);
+    setIsFormAddMode(false);
+    setFieldErrors({});
+    setDetailFetchError(null);
+    
+    // Set awal dari baris tabel (sementara menunggu GET detail)
+    setFormData({
+      id: p.id,
+      pilgrimId: p.pilgrimId || '',
+      ktp: p.ktp || '',
+      name: p.name || '',
+      gender: p.gender || 'Laki-laki',
+      birthDate: p.birthDate || '',
+      phone: p.phone || '',
+      emergencyContact: p.emergencyContact || '',
+      passport: p.passport || '',
+      visaNumber: p.visaNumber || '',
+      nationality: p.nationality || 'Indonesia',
+      packageId: p.packageId || '',
+      kloterId: p.kloterId || '',
+      hotelMakkah: p.hotelMakkah || '',
+      hotelMadinah: p.hotelMadinah || '',
+      departureDate: p.departureDate || '',
+      returnDate: p.returnDate || '',
+      tourLeader: p.tourLeader || '',
+      mutawifLocal: p.mutawifLocal || '',
+      status: p.status || 'active',
+    });
+
+    setModalTab('form-edit');
+    setIsFormModalOpen(true);
+    setIsDetailLoading(true);
+
+    try {
+      const detailData = await jamaahService.getJamaahDetail(targetUuid);
+      if (activeDetailUuidRef.current === targetUuid) {
+        setSelectedPilgrim(detailData);
+        setFormData({ ...detailData });
+      }
+    } catch (err: any) {
+      if (activeDetailUuidRef.current === targetUuid) {
+        console.error(`Gagal memuat detail terbaru jamaah UUID ${targetUuid}:`, err);
+        setDetailFetchError(err.message || "Gagal mengambil detail terbaru dari server.");
+      }
+    } finally {
+      if (activeDetailUuidRef.current === targetUuid) {
+        setIsDetailLoading(false);
+      }
+    }
+  };
+
+  // Simpan Form (Tambah/Edit Master Jamaah) via API Backend
+  const savePilgrim = async () => {
+    setFieldErrors({});
+
+    // Validasi Client-Side
+    const loginIdVal = (formData.pilgrimId || '').trim();
+    if (!loginIdVal) {
+      setFieldErrors({ login_id: ["ID Login (login_id) wajib diisi."] });
+      toast("ID Login Jamaah wajib diisi.", "error");
       return;
     }
-    if (!formData.name) {
-      toast("Nama lengkap jamaah wajib diisi.", "error");
+    if (loginIdVal.length > 10) {
+      setFieldErrors({ login_id: ["ID Login maksimal 10 karakter."] });
+      toast("ID Login maksimal 10 karakter.", "error");
       return;
     }
 
-    const formIdToUse = formData.formId || selectedPilgrim?.formId || `FRM-${Math.floor(100 + Math.random() * 900)}`;
-    const pilgrimIdToUse = formData.id || selectedPilgrim?.id || `PL-${Math.floor(80000 + Math.random() * 10000)}`;
-
-    if (selectedPilgrim && pilgrims.some(p => p.id === selectedPilgrim.id)) {
-      updatePilgrim(selectedPilgrim.id, {
-        ...formData,
-        id: pilgrimIdToUse,
-        formId: formIdToUse,
-      });
-      toast("Data jamaah berhasil diperbarui.", "success");
-    } else {
-      const newPilgrim: Pilgrim = {
-        id: pilgrimIdToUse,
-        formId: formIdToUse,
-        name: formData.name || '',
-        passport: formData.passport || '',
-        visaNumber: formData.visaNumber || '',
-        nationality: formData.nationality || 'Indonesia',
-        gender: formData.gender || 'Pria (Male)',
-        birthDate: formData.birthDate || '',
-        age: Number(formData.age) || (formData.birthDate ? Math.floor((new Date().getTime() - new Date(formData.birthDate).getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : 48),
-        phone: formData.phone || '',
-        emergencyContact: formData.emergencyContact || '',
-        group: formData.group || 'Kloter 4 Al-Barakah',
-        tourLeader: formData.tourLeader || 'Ust. H. Muhammad Ridwan (TL)',
-        mutawifLocal: formData.mutawifLocal || 'Ust. Ibrahim Al-Madani',
-        umrahPackage: formData.umrahPackage || 'Multazam',
-        hotelMakkah: formData.hotelMakkah || formData.hotel || 'Swissôtel Al Maqam Makkah',
-        hotelMadinah: formData.hotelMadinah || '',
-        hotel: formData.hotelMakkah || formData.hotel || 'Swissôtel Al Maqam Makkah',
-        departureDate: formData.departureDate || '2026-07-10',
-        returnDate: formData.returnDate || '2026-07-22',
-        ktp: formData.ktp || '',
-        totalAmount: Number(formData.totalAmount) || 35000000,
-        paidAmount: Number(formData.paidAmount) || 35000000,
-        paymentOption: formData.paymentOption || 'Bayar Lunas',
-        paymentMethod: formData.paymentMethod || 'Transfer BCA',
-        registrationDate: formData.registrationDate || todayStr,
-        koperBesar: formData.koperBesar ?? true,
-        koperKabin: formData.koperKabin ?? true,
-        batik: formData.batik ?? true,
-        kainIhram: formData.kainIhram ?? true,
-        meningitis: formData.meningitis ?? true,
-        photo: formData.photo ?? true
-      };
-      addPilgrim(newPilgrim);
-      toast("Pendaftaran jamaah baru berhasil disimpan.", "success");
+    const nikVal = (formData.ktp || '').trim();
+    if (isFormAddMode || nikVal) {
+      if (!nikVal) {
+        setFieldErrors({ nik: ["NIK KTP wajib diisi (tepat 16 digit angka)."] });
+        toast("NIK KTP wajib diisi.", "error");
+        return;
+      }
+      if (!/^\d{16}$/.test(nikVal)) {
+        setFieldErrors({ nik: ["NIK KTP harus terdiri dari tepat 16 digit angka."] });
+        toast("NIK KTP harus berupa 16 digit angka.", "error");
+        return;
+      }
     }
-    setIsFormModalOpen(false);
+
+    if (!formData.name || !formData.name.trim()) {
+      setFieldErrors({ full_name: ["Nama lengkap wajib diisi."] });
+      toast("Nama lengkap wajib diisi.", "error");
+      return;
+    }
+
+    const payload = buildJamaahPayload(formData);
+    setIsSubmitting(true);
+
+    let savedName = '';
+    try {
+      if (isFormAddMode) {
+        const created = await jamaahService.createJamaah(payload as JamaahPayload);
+        savedName = created.name;
+      } else if (selectedPilgrim?.id) {
+        const updated = await jamaahService.updateJamaah(selectedPilgrim.id, payload);
+        savedName = updated.name;
+      }
+      toast(`Data jamaah "${savedName || 'jamaah'}" berhasil disimpan!`, "success");
+      setIsFormModalOpen(false);
+    } catch (err: any) {
+      console.error("Gagal menyimpan data master jamaah ke server:", err);
+      if (err.errors && typeof err.errors === 'object') {
+        setFieldErrors(err.errors);
+      }
+      toast(err.message || "Gagal menyimpan data jamaah ke server.", "error");
+      setIsSubmitting(false);
+      return; // Berhenti jika POST/PUT gagal; pertahankan input form
+    }
+
+    // Penyimpanan berhasil! Coba perbarui daftar tabel
+    try {
+      await fetchJamaahList();
+    } catch (refreshErr) {
+      console.error("Simpan API berhasil, tetapi refresh daftar gagal:", refreshErr);
+      toast("Data berhasil disimpan ke backend, namun gagal memperbarui tabel. Silakan klik tombol Refresh.", "info");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleExportExcel = async () => {
@@ -289,15 +440,15 @@ export default function Pilgrims() {
         .reduce((sum, t) => sum + t.amount, 0);
       const netBalance = totalIncome - totalExpense;
 
-      const targetPilgrims = filteredPilgrims.length > 0 ? filteredPilgrims : pilgrims;
+      const targetPilgrims = filteredPilgrims.length > 0 ? filteredPilgrims : jamaahList;
 
       const masterSheets = [
         {
           sheetName: 'Ringkasan Dashboard',
           title: 'Ringkasan Eksekutif & Master Index System',
           data: [
-            { 'Modul / Menu': 'Data Jamaah', 'Total Data': `${targetPilgrims.length} Jamaah`, 'Catatan Status': 'Data Lengkap Registrasi, Paspor & Paket' },
-            { 'Modul / Menu': 'Data Kloter & Group', 'Total Data': `${groups.length} Kloter`, 'Catatan Status': 'Rombongan Pembimbing' },
+            { 'Modul / Menu': 'Data Master Jamaah', 'Total Data': `${targetPilgrims.length} Jamaah`, 'Catatan Status': 'Data Master Jamaah /api/jamaah' },
+            { 'Modul / Menu': 'Data Kloter & Group', 'Total Data': `${storeGroups.length} Kloter`, 'Catatan Status': 'Rombongan Pembimbing' },
             { 'Modul / Menu': 'Buku Kas Keuangan', 'Total Data': `${financeTransactions.length} Transaksi`, 'Catatan Status': `Net Saldo: Rp ${netBalance.toLocaleString('id-ID')}` },
             { 'Modul / Menu': 'Room Meet Hotel', 'Total Data': `${rooms.length} Kamar`, 'Catatan Status': 'Makkah & Madinah Hotels' },
             { 'Modul / Menu': 'Stok & Inventaris Staff', 'Total Data': `${staffStocks.length} Items`, 'Catatan Status': 'Perlengkapan Staff & Gudang' },
@@ -307,29 +458,25 @@ export default function Pilgrims() {
           ]
         },
         {
-          sheetName: 'Data Jamaah',
-          title: 'Master Data Jamaah Umrah - DNA Tour',
+          sheetName: 'Master Jamaah',
+          title: 'Master Data Jamaah Umrah - DNA Tour (/api/jamaah)',
           data: targetPilgrims.map(p => ({
-            'ID Jamaah': p.id,
-            'Form ID': p.formId || '-',
+            'ID Jamaah (Kode Login)': p.pilgrimId || p.formId || p.id,
+            'UUID Internal': p.id,
             'Nama Lengkap': p.name,
-            'No. Paspor': p.passport,
+            'No. Paspor': p.passport || '-',
             'No. Visa': p.visaNumber || '-',
             'Kewarganegaraan': p.nationality || 'Indonesia',
-            'Jenis Kelamin': p.gender,
-            'Usia': p.age,
-            'No. HP': p.phone,
+            'Jenis Kelamin': p.gender || '-',
+            'Usia': p.age ?? '-',
+            'No. HP': p.phone || '-',
             'Kontak Darurat': p.emergencyContact || '-',
             'Paket Umrah': p.umrahPackage || '-',
-            'Kloter / Group': p.group,
+            'Kloter / Group': p.group || '-',
             'Tour Leader': p.tourLeader || '-',
             'Mutawif Local': p.mutawifLocal || '-',
             'Hotel Makkah': p.hotelMakkah || p.hotel || '-',
             'Hotel Madinah': p.hotelMadinah || '-',
-            'Status Pembayaran': p.paymentOption || 'Belum Lunas',
-            'Total Biaya (Rp)': p.totalAmount || 30000000,
-            'Telah Dibayar (Rp)': p.paidAmount || 0,
-            'Sisa Tagihan (Rp)': Math.max(0, (p.totalAmount || 30000000) - (p.paidAmount || 0)),
             'Tgl. Keberangkatan': p.departureDate || '-',
             'Tgl. Kepulangan': p.returnDate || '-'
           }))
@@ -354,21 +501,50 @@ export default function Pilgrims() {
   const totalPages = Math.max(1, Math.ceil(filteredPilgrims.length / itemsPerPage));
   const paginatedData = filteredPilgrims.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
+  // Group list for dropdowns (from API or store fallback)
+  const availableKloters = klotersList.length > 0 ? klotersList : storeGroups;
+
   return (
     <div className="space-y-5 pb-10">
-      {/* Header Banner - Clean & Consistent */}
+      {/* Header Banner */}
       <div className="bg-white rounded-2xl border border-gray-200/80 p-5 shadow-2xs">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900">
-              Jamaah
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900">
+                Management Jamaah
+              </h1>
+              {isJamaahLoading ? (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 animate-pulse">
+                  <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> Memuat API...
+                </span>
+              ) : jamaahFetchError ? (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
+                  Gagal Memuat API
+                </span>
+              ) : (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  API Live (/api/jamaah)
+                </span>
+              )}
+            </div>
             <p className="text-xs sm:text-sm text-gray-500 font-normal mt-1">
-              Kelola dan pantau informasi data diri serta rincian perjalanan jamaah
+              Kelola dan pantau data master jamaah resmi terhubung ke backend (/api/jamaah)
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+            <Button 
+              onClick={fetchJamaahList}
+              variant="outline"
+              disabled={isJamaahLoading}
+              className="text-xs h-10 font-semibold text-gray-700 border-gray-200 bg-white hover:bg-gray-50 flex-1 sm:flex-none justify-center px-3 rounded-xl cursor-pointer shadow-2xs"
+              title="Perbarui Data dari API"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 mr-1 text-gray-600 ${isJamaahLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+
             <Button 
               onClick={handleExportExcel}
               variant="outline"
@@ -389,9 +565,32 @@ export default function Pilgrims() {
         </div>
       </div>
 
-      {/* Stats Cards Grid - Interactive & Tactile */}
+      {/* Banner Error Panggilan API */}
+      {jamaahFetchError && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-red-800 animate-fade-in">
+          <div className="flex items-center gap-3 text-xs sm:text-sm font-medium">
+            <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
+            <span>
+              {jamaahList.length > 0 
+                ? "Pembaruan data dari /api/jamaah gagal. Menampilkan data hasil muat terakhir."
+                : `Gagal memuat data master jamaah dari server (/api/jamaah): ${jamaahFetchError}`}
+            </span>
+          </div>
+          <Button 
+            onClick={fetchJamaahList}
+            variant="outline"
+            size="sm"
+            className="text-xs font-semibold border-red-300 text-red-700 hover:bg-red-100 rounded-xl shrink-0"
+          >
+            <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+            Coba Lagi
+          </Button>
+        </div>
+      )}
+
+      {/* Stats Cards Grid (Dihitung Murni dari Respons API Backend) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Total Jamaah Terdaftar */}
+        {/* Card 1: Total Jamaah Master */}
         <Card 
           onClick={() => { setActiveTab('all'); setCurrentPage(1); }}
           className={`rounded-2xl border bg-white shadow-2xs cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm active:scale-[0.98] ${
@@ -400,116 +599,87 @@ export default function Pilgrims() {
               : 'border-gray-200/80 hover:border-gray-300'
           }`}
         >
-          <CardContent className="p-5 flex flex-col justify-between h-full gap-3">
-            <div className="flex justify-between items-start">
-              <div className="space-y-1">
-                <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">TOTAL JAMAAH TERDAFTAR</p>
-                <p className="text-2xl sm:text-[26px] font-bold tracking-tight text-[#2d0a0a]">
-                  {totalPilgrims} Jamaah
-                </p>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-[#fcedea] text-[#782820] flex items-center justify-center shrink-0 shadow-2xs">
-                <Users className="w-5 h-5" />
-              </div>
+          <div className="p-4 flex items-center justify-between">
+            <div className="space-y-1">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Master Jamaah</p>
+              <h3 className="text-2xl font-bold text-gray-900 tracking-tight">{isJamaahLoading && !hasFetched ? '-' : totalPilgrims}</h3>
+              <p className="text-[11px] text-gray-400 font-medium">{totalMale} Pria &bull; {totalFemale} Wanita</p>
             </div>
-            <div className="flex items-center gap-1.5 text-xs font-medium text-[#782820]">
-              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-              <span>Database Registrasi Aktif</span>
+            <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center border border-emerald-100 shrink-0">
+              <Users className="w-5 h-5" />
             </div>
-          </CardContent>
+          </div>
         </Card>
 
-        {/* Card 2: Pembayaran Lunas */}
+        {/* Card 2: Jamaah Lansia */}
         <Card 
-          onClick={() => { setActiveTab('all'); setCurrentPage(1); }}
+          onClick={() => { setActiveTab('elderly'); setCurrentPage(1); }}
           className={`rounded-2xl border bg-white shadow-2xs cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm active:scale-[0.98] ${
-            activeTab === 'all' 
-              ? 'border-emerald-600 ring-2 ring-emerald-600/20 bg-emerald-50/20' 
-              : 'border-gray-200/80 hover:border-gray-300'
-          }`}
-        >
-          <CardContent className="p-5 flex flex-col justify-between h-full gap-3">
-            <div className="flex justify-between items-start">
-              <div className="space-y-1">
-                <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">PEMBAYARAN LUNAS</p>
-                <p className="text-2xl sm:text-[26px] font-bold tracking-tight text-[#2d0a0a]">
-                  {totalLunas} Jamaah
-                </p>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-[#fcedea] text-[#782820] flex items-center justify-center shrink-0 shadow-2xs">
-                <CreditCard className="w-5 h-5" />
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5 text-xs font-medium text-[#782820]">
-              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-              <span>Biaya Paket Terpenuhi</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Card 3: Belum Lunas */}
-        <Card 
-          onClick={() => { setActiveTab('unpaid'); setCurrentPage(1); }}
-          className={`rounded-2xl border bg-white shadow-2xs cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm active:scale-[0.98] ${
-            activeTab === 'unpaid' 
+            activeTab === 'elderly' 
               ? 'border-amber-600 ring-2 ring-amber-600/20 bg-amber-50/20' 
               : 'border-gray-200/80 hover:border-gray-300'
           }`}
         >
-          <CardContent className="p-5 flex flex-col justify-between h-full gap-3">
-            <div className="flex justify-between items-start">
-              <div className="space-y-1">
-                <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">BELUM LUNAS</p>
-                <p className="text-2xl sm:text-[26px] font-bold tracking-tight text-[#2d0a0a]">
-                  {totalUnpaid} Jamaah
-                </p>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-[#fdf6e7] text-[#c27803] flex items-center justify-center shrink-0 shadow-2xs">
-                <Clock className="w-5 h-5" />
-              </div>
+          <div className="p-4 flex items-center justify-between">
+            <div className="space-y-1">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Jamaah Lansia</p>
+              <h3 className="text-2xl font-bold text-gray-900 tracking-tight">{isJamaahLoading && !hasFetched ? '-' : totalElderly}</h3>
+              <p className="text-[11px] text-amber-600 font-medium">Usia &ge; 60 Tahun</p>
             </div>
-            <div className="flex items-center gap-1.5 text-xs font-medium text-[#b45309]">
-              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-              <span>Menunggu Pelunasan</span>
+            <div className="w-11 h-11 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center border border-amber-100 shrink-0">
+              <User className="w-5 h-5" />
             </div>
-          </CardContent>
+          </div>
         </Card>
 
-        {/* Card 4: Paspor Terverifikasi */}
+        {/* Card 3: Paspor Ready */}
         <Card 
-          onClick={() => { setActiveTab('all'); setCurrentPage(1); }}
-          className="rounded-2xl border border-gray-200/80 bg-white shadow-2xs cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-sm active:scale-[0.98]"
+          className="rounded-2xl border border-gray-200/80 bg-white shadow-2xs transition-all duration-200 hover:border-gray-300"
         >
-          <CardContent className="p-5 flex flex-col justify-between h-full gap-3">
-            <div className="flex justify-between items-start">
-              <div className="space-y-1">
-                <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">PASPOR TERVERIFIKASI</p>
-                <p className="text-2xl sm:text-[26px] font-bold tracking-tight text-gray-900">
-                  {totalPassportReady} Dokumen
-                </p>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-[#edf5ff] text-[#2563eb] flex items-center justify-center shrink-0 shadow-2xs">
-                <BookOpen className="w-5 h-5" />
-              </div>
+          <div className="p-4 flex items-center justify-between">
+            <div className="space-y-1">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Paspor Siap</p>
+              <h3 className="text-2xl font-bold text-gray-900 tracking-tight">{isJamaahLoading && !hasFetched ? '-' : totalPassportReady}</h3>
+              <p className="text-[11px] text-emerald-600 font-medium">Nomor Paspor Terdata</p>
             </div>
-            <div className="flex items-center gap-1.5 text-xs font-medium text-[#2563eb]">
-              <FileCheck className="w-3.5 h-3.5 shrink-0" />
-              <span>Dokumen Valid Siap Visa</span>
+            <div className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center border border-blue-100 shrink-0">
+              <BookOpen className="w-5 h-5" />
             </div>
-          </CardContent>
+          </div>
+        </Card>
+
+        {/* Card 4: Belum Ada Kloter */}
+        <Card 
+          onClick={() => { setActiveTab('unassigned'); setCurrentPage(1); }}
+          className={`rounded-2xl border bg-white shadow-2xs cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm active:scale-[0.98] ${
+            activeTab === 'unassigned' 
+              ? 'border-purple-600 ring-2 ring-purple-600/20 bg-purple-50/20' 
+              : 'border-gray-200/80 hover:border-gray-300'
+          }`}
+        >
+          <div className="p-4 flex items-center justify-between">
+            <div className="space-y-1">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Belum Ada Kloter</p>
+              <h3 className="text-2xl font-bold text-gray-900 tracking-tight">{isJamaahLoading && !hasFetched ? '-' : totalUnassigned}</h3>
+              <p className="text-[11px] text-purple-600 font-medium">Perlu Alokasi Kloter</p>
+            </div>
+            <div className="w-11 h-11 rounded-2xl bg-purple-50 text-purple-700 flex items-center justify-center border border-purple-100 shrink-0">
+              <Flag className="w-5 h-5" />
+            </div>
+          </div>
         </Card>
       </div>
 
-      {/* Main Table Card with Integrated Tabs */}
-      <Card className="overflow-hidden border border-gray-200/80 shadow-2xs">
-        {/* Navigation Tabs Header */}
-        <div className="border-b border-gray-100 bg-white px-4 sm:px-6 pt-2.5 pb-0">
-          <div className="flex items-center gap-2 sm:gap-4 overflow-x-auto scrollbar-none pb-0">
+      {/* Main Table Card */}
+      <Card className="rounded-2xl border border-gray-200/80 bg-white shadow-2xs overflow-hidden">
+        {/* Navigation Tabs */}
+        <div className="border-b border-gray-100 px-4 pt-3 bg-white">
+          <div className="flex items-center gap-1 overflow-x-auto hide-scrollbar pb-0.5">
             <button 
               onClick={() => { setActiveTab('all'); setCurrentPage(1); }}
-              className={`relative pb-3 pt-2 px-2.5 text-xs sm:text-sm transition-all duration-200 whitespace-nowrap cursor-pointer flex items-center gap-1.5 select-none rounded-t-lg group active:scale-[0.96] ${
+              className={`relative pb-3 pt-2 px-3.5 text-xs sm:text-sm transition-all duration-200 whitespace-nowrap cursor-pointer flex items-center gap-2 select-none rounded-t-lg group active:scale-[0.96] ${
                 activeTab === 'all' 
-                  ? 'font-bold text-emerald-800' 
+                  ? 'font-bold text-emerald-900' 
                   : 'font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50/80'
               }`}
             >
@@ -519,61 +689,64 @@ export default function Pilgrims() {
                   ? 'bg-emerald-100 text-emerald-800 scale-105' 
                   : 'bg-gray-100 text-gray-600 group-hover:bg-gray-200/80'
               }`}>
-                {pilgrims.length}
+                {totalPilgrims}
               </span>
               {activeTab === 'all' && (
                 <span className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-emerald-600 rounded-full animate-tab-indicator" />
               )}
             </button>
+
             <button 
               onClick={() => { setActiveTab('male'); setCurrentPage(1); }}
-              className={`relative pb-3 pt-2 px-2.5 text-xs sm:text-sm transition-all duration-200 whitespace-nowrap cursor-pointer flex items-center gap-1.5 select-none rounded-t-lg group active:scale-[0.96] ${
+              className={`relative pb-3 pt-2 px-3.5 text-xs sm:text-sm transition-all duration-200 whitespace-nowrap cursor-pointer flex items-center gap-2 select-none rounded-t-lg group active:scale-[0.96] ${
                 activeTab === 'male' 
-                  ? 'font-bold text-emerald-800' 
+                  ? 'font-bold text-blue-900' 
                   : 'font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50/80'
               }`}
             >
-              <span>Laki-laki</span>
+              <span>Jamaah Pria</span>
               <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold transition-all duration-200 ${
                 activeTab === 'male' 
-                  ? 'bg-emerald-100 text-emerald-800 scale-105' 
+                  ? 'bg-blue-100 text-blue-800 scale-105' 
                   : 'bg-gray-100 text-gray-600 group-hover:bg-gray-200/80'
               }`}>
                 {totalMale}
               </span>
               {activeTab === 'male' && (
-                <span className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-emerald-600 rounded-full animate-tab-indicator" />
+                <span className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-blue-600 rounded-full animate-tab-indicator" />
               )}
             </button>
+
             <button 
               onClick={() => { setActiveTab('female'); setCurrentPage(1); }}
-              className={`relative pb-3 pt-2 px-2.5 text-xs sm:text-sm transition-all duration-200 whitespace-nowrap cursor-pointer flex items-center gap-1.5 select-none rounded-t-lg group active:scale-[0.96] ${
+              className={`relative pb-3 pt-2 px-3.5 text-xs sm:text-sm transition-all duration-200 whitespace-nowrap cursor-pointer flex items-center gap-2 select-none rounded-t-lg group active:scale-[0.96] ${
                 activeTab === 'female' 
-                  ? 'font-bold text-emerald-800' 
+                  ? 'font-bold text-pink-900' 
                   : 'font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50/80'
               }`}
             >
-              <span>Perempuan</span>
+              <span>Jamaah Wanita</span>
               <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold transition-all duration-200 ${
                 activeTab === 'female' 
-                  ? 'bg-emerald-100 text-emerald-800 scale-105' 
+                  ? 'bg-pink-100 text-pink-800 scale-105' 
                   : 'bg-gray-100 text-gray-600 group-hover:bg-gray-200/80'
               }`}>
                 {totalFemale}
               </span>
               {activeTab === 'female' && (
-                <span className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-emerald-600 rounded-full animate-tab-indicator" />
+                <span className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-pink-600 rounded-full animate-tab-indicator" />
               )}
             </button>
+
             <button 
               onClick={() => { setActiveTab('elderly'); setCurrentPage(1); }}
-              className={`relative pb-3 pt-2 px-2.5 text-xs sm:text-sm transition-all duration-200 whitespace-nowrap cursor-pointer flex items-center gap-1.5 select-none rounded-t-lg group active:scale-[0.96] ${
+              className={`relative pb-3 pt-2 px-3.5 text-xs sm:text-sm transition-all duration-200 whitespace-nowrap cursor-pointer flex items-center gap-2 select-none rounded-t-lg group active:scale-[0.96] ${
                 activeTab === 'elderly' 
-                  ? 'font-bold text-emerald-800' 
+                  ? 'font-bold text-amber-900' 
                   : 'font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50/80'
               }`}
             >
-              <span>Lansia (&ge;60)</span>
+              <span>Lansia (&ge;60 Thn)</span>
               <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold transition-all duration-200 ${
                 activeTab === 'elderly' 
                   ? 'bg-amber-100 text-amber-800 scale-105' 
@@ -582,47 +755,28 @@ export default function Pilgrims() {
                 {totalElderly}
               </span>
               {activeTab === 'elderly' && (
-                <span className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-emerald-600 rounded-full animate-tab-indicator" />
+                <span className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-amber-600 rounded-full animate-tab-indicator" />
               )}
             </button>
+
             <button 
               onClick={() => { setActiveTab('unassigned'); setCurrentPage(1); }}
-              className={`relative pb-3 pt-2 px-2.5 text-xs sm:text-sm transition-all duration-200 whitespace-nowrap cursor-pointer flex items-center gap-1.5 select-none rounded-t-lg group active:scale-[0.96] ${
+              className={`relative pb-3 pt-2 px-3.5 text-xs sm:text-sm transition-all duration-200 whitespace-nowrap cursor-pointer flex items-center gap-2 select-none rounded-t-lg group active:scale-[0.96] ${
                 activeTab === 'unassigned' 
-                  ? 'font-bold text-amber-800' 
+                  ? 'font-bold text-purple-900' 
                   : 'font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50/80'
               }`}
             >
               <span>Belum Ada Kloter</span>
               <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold transition-all duration-200 ${
                 activeTab === 'unassigned' 
-                  ? 'bg-amber-100 text-amber-800 scale-105' 
+                  ? 'bg-purple-100 text-purple-800 scale-105' 
                   : 'bg-gray-100 text-gray-600 group-hover:bg-gray-200/80'
               }`}>
                 {totalUnassigned}
               </span>
               {activeTab === 'unassigned' && (
-                <span className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-amber-600 rounded-full animate-tab-indicator" />
-              )}
-            </button>
-            <button 
-              onClick={() => { setActiveTab('unpaid'); setCurrentPage(1); }}
-              className={`relative pb-3 pt-2 px-2.5 text-xs sm:text-sm transition-all duration-200 whitespace-nowrap cursor-pointer flex items-center gap-1.5 select-none rounded-t-lg group active:scale-[0.96] ${
-                activeTab === 'unpaid' 
-                  ? 'font-bold text-red-800' 
-                  : 'font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50/80'
-              }`}
-            >
-              <span>Sisa Tagihan</span>
-              <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold transition-all duration-200 ${
-                activeTab === 'unpaid' 
-                  ? 'bg-red-100 text-red-800 scale-105' 
-                  : 'bg-gray-100 text-gray-600 group-hover:bg-gray-200/80'
-              }`}>
-                {totalUnpaid}
-              </span>
-              {activeTab === 'unpaid' && (
-                <span className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-red-600 rounded-full animate-tab-indicator" />
+                <span className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-purple-600 rounded-full animate-tab-indicator" />
               )}
             </button>
           </div>
@@ -633,7 +787,7 @@ export default function Pilgrims() {
           <div className="relative w-full sm:w-96">
             <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <Input 
-              placeholder="Cari nama, ID, paspor, HP, kloter..." 
+              placeholder="Cari nama, ID Jamaah (login_id), paspor, HP..." 
               value={searchTerm}
               onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
               className="pl-9.5 pr-8 h-9.5 rounded-xl border-gray-200 bg-white text-xs sm:text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20"
@@ -689,9 +843,15 @@ export default function Pilgrims() {
                 onChange={(e) => { setFilterPackage(e.target.value); setCurrentPage(1); }}
               >
                 <option value="">Semua Paket</option>
-                <option value="Yamani">Yamani</option>
-                <option value="Raudhah">Raudhah</option>
-                <option value="Multazam">Multazam</option>
+                {packagesList.length > 0 ? packagesList.map(p => (
+                  <option key={p.id} value={p.name}>{p.name}</option>
+                )) : (
+                  <>
+                    <option value="Yamani">Yamani</option>
+                    <option value="Raudhah">Raudhah</option>
+                    <option value="Multazam">Multazam</option>
+                  </>
+                )}
               </select>
             </div>
 
@@ -703,7 +863,7 @@ export default function Pilgrims() {
                 onChange={(e) => { setFilterGroup(e.target.value); setCurrentPage(1); }}
               >
                 <option value="">Semua Kloter</option>
-                {groups.map(g => (
+                {availableKloters.map(g => (
                   <option key={g.id} value={g.name}>{g.name}</option>
                 ))}
               </select>
@@ -760,26 +920,29 @@ export default function Pilgrims() {
                     aria-label="Pilih semua"
                   />
                 </TableHead>
-                <TableHead className="text-[11px] uppercase tracking-wider font-bold text-gray-500 py-3.5 whitespace-nowrap min-w-[100px]">ID JAMAAH</TableHead>
+                <TableHead className="text-[11px] uppercase tracking-wider font-bold text-gray-500 py-3.5 whitespace-nowrap min-w-[120px]">ID JAMAAH</TableHead>
                 <TableHead className="text-[11px] uppercase tracking-wider font-bold text-gray-500 py-3.5 whitespace-nowrap min-w-[260px]">PROFIL JAMAAH</TableHead>
                 <TableHead className="text-[11px] uppercase tracking-wider font-bold text-gray-500 py-3.5 whitespace-nowrap min-w-[180px]">TGL KEBERANGKATAN</TableHead>
                 <TableHead className="text-[11px] uppercase tracking-wider font-bold text-gray-500 py-3.5 whitespace-nowrap min-w-[180px]">KLOTER ROMBONGAN</TableHead>
                 <TableHead className="text-[11px] uppercase tracking-wider font-bold text-gray-500 py-3.5 whitespace-nowrap min-w-[200px]">PAKET UMRAH</TableHead>
-                {activeTab === 'unpaid' && (
-                  <TableHead className="text-[11px] uppercase tracking-wider font-bold text-gray-500 py-3.5 whitespace-nowrap min-w-[200px]">STATUS & SISA TAGIHAN</TableHead>
-                )}
                 <TableHead className="text-right pr-6 text-[11px] uppercase tracking-wider font-bold text-gray-500 py-3.5 whitespace-nowrap min-w-[130px]">AKSI</TableHead>
               </TableRow>
             </TableHeader>
 
             <TableBody key={activeTab} className="divide-y divide-gray-100 animate-fade-in">
-              {paginatedData.map((pilgrim) => {
-                const totalCost = pilgrim.totalAmount || 30000000;
-                const paid = pilgrim.paidAmount || 0;
-                const remaining = Math.max(0, totalCost - paid);
+              {isJamaahLoading && !hasFetched ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="h-48 text-center">
+                    <div className="flex flex-col items-center justify-center text-gray-500 space-y-2">
+                      <RefreshCw className="w-6 h-6 text-emerald-600 animate-spin" />
+                      <p className="text-sm font-semibold text-gray-700">Memuat data master jamaah dari server (/api/jamaah)...</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : paginatedData.map((pilgrim) => {
+                const displayId = pilgrim.pilgrimId || pilgrim.formId || pilgrim.id;
                 const isElderly = (pilgrim.age || 0) >= 60;
                 
-                // Format departure date nicely
                 const formatDisplayDate = (dateStr?: string) => {
                   if (!dateStr) return '-';
                   try {
@@ -812,20 +975,22 @@ export default function Pilgrims() {
                       />
                     </TableCell>
 
-                    {/* ID */}
+                    {/* ID JAMAAH (login_id dari Backend) */}
                     <TableCell className="py-4 whitespace-nowrap">
-                      <div className="font-bold text-sm tracking-tight text-[#480c0c] whitespace-nowrap">{pilgrim.id}</div>
+                      <div className="font-bold text-sm tracking-tight text-[#480c0c] whitespace-nowrap font-mono">
+                        {displayId}
+                      </div>
                     </TableCell>
 
                     {/* Profil Jamaah */}
                     <TableCell className="py-4 whitespace-nowrap">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-full bg-[#fcedea] text-[#782820] font-bold text-xs flex items-center justify-center shrink-0 border border-[#f5d0cb]">
-                          {pilgrim.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                          {pilgrim.name ? pilgrim.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : 'JM'}
                         </div>
                         <div className="flex flex-col min-w-0">
                           <div className="flex items-center gap-1.5 whitespace-nowrap">
-                            <span className="font-bold text-sm text-gray-900 whitespace-nowrap">{pilgrim.name}</span>
+                            <span className="font-bold text-sm text-gray-900 whitespace-nowrap">{pilgrim.name || '-'}</span>
                             {isElderly && (
                               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#fdf6e7] text-[#b45309] border border-[#fbe8bf] shrink-0 whitespace-nowrap">
                                 Lansia
@@ -833,7 +998,7 @@ export default function Pilgrims() {
                             )}
                           </div>
                           <div className="flex items-center gap-2 text-xs text-gray-500 font-normal mt-0.5 whitespace-nowrap">
-                            <span className="whitespace-nowrap">{pilgrim.gender} &bull; {pilgrim.age || 45} thn</span>
+                            <span className="whitespace-nowrap">{pilgrim.gender || '-'} {pilgrim.age ? `• ${pilgrim.age} thn` : ''}</span>
                             {pilgrim.phone && (
                               <span className="text-gray-400 whitespace-nowrap">&bull; {pilgrim.phone}</span>
                             )}
@@ -873,28 +1038,9 @@ export default function Pilgrims() {
                     {/* Paket Umrah */}
                     <TableCell className="py-4 whitespace-nowrap">
                       <span className="inline-flex items-center px-3.5 py-1.5 rounded-full text-xs font-bold text-[#782820] bg-[#fcedea] border border-[#f5d0cb] shadow-2xs tracking-wide uppercase whitespace-nowrap shrink-0">
-                        {pilgrim.umrahPackage || 'Yamani'}
+                        {pilgrim.umrahPackage || '-'}
                       </span>
                     </TableCell>
-
-                    {/* Status Bayar - Only when activeTab === 'unpaid' */}
-                    {activeTab === 'unpaid' && (
-                      <TableCell className="py-4 whitespace-nowrap">
-                        <div className="space-y-1 whitespace-nowrap">
-                          <div className="flex items-center gap-1.5 whitespace-nowrap">
-                            <Badge className="bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-semibold px-1.5 py-0 whitespace-nowrap shrink-0">
-                              {pilgrim.paymentOption || 'DP'}
-                            </Badge>
-                            <span className="text-[11px] font-semibold text-rose-600 whitespace-nowrap">
-                              Sisa: Rp {remaining.toLocaleString('id-ID')}
-                            </span>
-                          </div>
-                          <div className="text-[10px] text-gray-400 font-medium whitespace-nowrap">
-                            Terbayar: Rp {paid.toLocaleString('id-ID')} / {totalCost.toLocaleString('id-ID')}
-                          </div>
-                        </div>
-                      </TableCell>
-                    )}
 
                     {/* Actions */}
                     <TableCell className="text-right pr-6 py-4 whitespace-nowrap">
@@ -903,7 +1049,7 @@ export default function Pilgrims() {
                           variant="ghost" 
                           size="icon" 
                           className="w-8 h-8 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg cursor-pointer transition-colors shrink-0" 
-                          title="Lihat Data Diri"
+                          title="Lihat Detail Master Jamaah"
                           onClick={() => openDetailModal(pilgrim)}
                         >
                           <Eye className="w-4 h-4" />
@@ -935,16 +1081,20 @@ export default function Pilgrims() {
                 );
               })}
 
-              {filteredPilgrims.length === 0 && (
+              {!isJamaahLoading && filteredPilgrims.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={activeTab === 'unpaid' ? 8 : 7} className="h-56 text-center">
+                  <TableCell colSpan={7} className="h-56 text-center">
                     <div className="flex flex-col items-center justify-center text-gray-500">
                       <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center mb-3 border border-gray-200">
                         <Users className="w-5 h-5 text-gray-400" />
                       </div>
-                      <p className="font-semibold text-gray-900">Tidak ada data jamaah ditemukan</p>
+                      <p className="font-semibold text-gray-900">
+                        {searchTerm || hasActiveFilters ? "Tidak ada jamaah yang cocok dengan filter" : "Belum ada data jamaah"}
+                      </p>
                       <p className="text-xs text-gray-500 mt-1 max-w-sm">
-                        Ubah filter pencarian atau gunakan tombol tambah untuk mendaftarkan jamaah baru.
+                        {searchTerm || hasActiveFilters 
+                          ? "Coba sesuaikan kata kunci pencarian atau reset filter."
+                          : "Data master jamaah dari server (/api/jamaah) belum memiliki entri."}
                       </p>
                       {hasActiveFilters && (
                         <Button 
@@ -975,7 +1125,7 @@ export default function Pilgrims() {
               size="sm" 
               className="text-xs h-8 rounded-lg border-gray-200 text-gray-700 flex-1 sm:flex-none cursor-pointer" 
               onClick={() => setCurrentPage(p => Math.max(1, p - 1))} 
-              disabled={currentPage === 1}
+              disabled={currentPage === 1 || filteredPilgrims.length === 0}
             >
               Sebelumnya
             </Button>
@@ -987,7 +1137,7 @@ export default function Pilgrims() {
               size="sm" 
               className="text-xs h-8 rounded-lg border-gray-200 text-gray-700 flex-1 sm:flex-none cursor-pointer" 
               onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} 
-              disabled={currentPage === totalPages}
+              disabled={currentPage === totalPages || filteredPilgrims.length === 0}
             >
               Selanjutnya
             </Button>
@@ -995,13 +1145,20 @@ export default function Pilgrims() {
         </div>
       </Card>
 
-      {/* Modal: Data Diri & Form Edit Jamaah (Matches Reference Design in Screenshots) */}
+      {/* Modal: Data Diri & Form Edit/Tambah Master Jamaah */}
       <Dialog open={isFormModalOpen} onOpenChange={setIsFormModalOpen}>
-        <DialogContent hideClose className="w-[95vw] max-w-2xl sm:w-full max-h-[92vh] bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border-0 overflow-y-auto hide-scrollbar">
-          {/* Top Bar Header with Tabs (Exact Match to Screenshot 2) */}
+        <DialogContent hideClose className="w-[95vw] max-w-3xl sm:w-full max-h-[92vh] bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border-0 overflow-y-auto hide-scrollbar">
+          {/* Top Bar Header with Tabs */}
           <div className="flex justify-between items-center pb-5 border-b border-gray-100 mb-6">
             <div className="flex items-center gap-2.5">
-              {selectedPilgrim ? (
+              {isFormAddMode ? (
+                <button
+                  type="button"
+                  className="px-6 py-2.5 rounded-full text-sm sm:text-base font-bold bg-[#740A03] text-white shadow-xs cursor-default select-none"
+                >
+                  Tambah Master Jamaah Baru
+                </button>
+              ) : selectedPilgrim ? (
                 <>
                   <button
                     type="button"
@@ -1031,7 +1188,7 @@ export default function Pilgrims() {
                   type="button"
                   className="px-6 py-2.5 rounded-full text-sm sm:text-base font-bold bg-[#00a859] text-white shadow-xs cursor-default select-none"
                 >
-                  Tambah Jamaah
+                  Form Master Jamaah
                 </button>
               )}
             </div>
@@ -1045,48 +1202,64 @@ export default function Pilgrims() {
             </button>
           </div>
 
-          {/* TAB 1: DATA DIRI DETAIL (Informasi Pribadi & Rincian Perjalanan) */}
-          {modalTab === 'data-diri' && (() => {
-            const activePilgrim = selectedPilgrim || (formData.name ? (formData as Pilgrim) : pilgrims[0]);
-            const matchedGroup = groups.find(g => g.name === activePilgrim?.group);
-            const formatIndoDate = (dateStr?: string) => {
-              if (!dateStr) return '-';
-              try {
-                const d = new Date(dateStr);
-                if (isNaN(d.getTime())) return dateStr;
-                const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-                return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
-              } catch {
-                return dateStr;
-              }
-            };
+          {/* Indikator Loading Detail */}
+          {isDetailLoading && (
+            <div className="py-6 px-6 bg-blue-50/60 border border-blue-200 rounded-2xl mb-4 text-xs font-semibold text-blue-800 flex items-center justify-center gap-2">
+              <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
+              <span>Memuat detail terbaru dari /api/jamaah/{activeDetailUuidRef.current}...</span>
+            </div>
+          )}
 
-            const genderFormatted = activePilgrim?.gender === 'Perempuan' ? 'Wanita (Female)' : 'Pria (Male)';
+          {/* Indikator Error Detail */}
+          {detailFetchError && (
+            <div className="py-4 px-6 bg-red-50 border border-red-200 rounded-2xl mb-4 text-xs font-semibold text-red-800 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-red-600" />
+                <span>{detailFetchError}</span>
+              </div>
+              <Button 
+                size="sm"
+                variant="outline"
+                className="text-xs font-semibold border-red-300 text-red-700 rounded-xl"
+                onClick={() => {
+                  if (activeDetailUuidRef.current) {
+                    openDetailModal({ id: activeDetailUuidRef.current, name: '' } as Pilgrim);
+                  }
+                }}
+              >
+                Coba Lagi
+              </Button>
+            </div>
+          )}
+
+          {/* TAB 1: DATA DIRI DETAIL MASTER JAMAAH */}
+          {modalTab === 'data-diri' && !isFormAddMode && selectedPilgrim && !isDetailLoading && (() => {
+            const activePilgrim = selectedPilgrim;
+            const matchedGroup = availableKloters.find(g => g.id === activePilgrim?.kloterId || g.name === activePilgrim?.group);
+
+            const displayId = activePilgrim?.pilgrimId || activePilgrim?.formId || activePilgrim?.id || '-';
+            const genderFormatted = activePilgrim?.gender || '-';
             const birthDateFormatted = activePilgrim?.birthDate 
-              ? `${formatIndoDate(activePilgrim.birthDate)} (${activePilgrim.age || 48} Thn)`
-              : (activePilgrim?.age ? `14 Mei ${2026 - activePilgrim.age} (${activePilgrim.age} Thn)` : '14 Mei 1978 (48 Thn)');
-            const passportFormatted = activePilgrim?.passport 
-              ? (activePilgrim.passport.includes('(') ? activePilgrim.passport : `${activePilgrim.passport} (Berlaku)`)
-              : 'X-99821014 (Berlaku)';
-            const visaFormatted = activePilgrim?.visaNumber || 'VSA-2026-99210-SA';
+              ? `${formatIndoDate(activePilgrim.birthDate)}${activePilgrim.age ? ` (${activePilgrim.age} Thn)` : ''}`
+              : (activePilgrim?.age ? `${activePilgrim.age} Thn` : '-');
+            const passportFormatted = activePilgrim?.passport || '-';
+            const visaFormatted = activePilgrim?.visaNumber || '-';
             const nationalityFormatted = activePilgrim?.nationality || 'Indonesia';
-            const phoneFormatted = activePilgrim?.phone || '+62 812-3456-7890';
-            const emergencyFormatted = activePilgrim?.emergencyContact 
-              ? (activePilgrim.emergencyContact.includes('(') ? activePilgrim.emergencyContact : `Keluarga Jamaah (${activePilgrim.emergencyContact})`)
-              : 'Keluarga Jamaah (+62 811-9988-7766)';
+            const phoneFormatted = activePilgrim?.phone || '-';
+            const emergencyFormatted = activePilgrim?.emergencyContact || '-';
 
-            const groupFormatted = activePilgrim?.group || 'Kloter 4 Al-Barakah';
-            const rawTl = matchedGroup?.tourLeader || activePilgrim?.tourLeader || 'Ust. H. Muhammad Ridwan';
-            const tlFormatted = rawTl.includes('(TL)') ? rawTl : `${rawTl} (TL)`;
-            const mutawifFormatted = matchedGroup?.mutawif || activePilgrim?.mutawifLocal || 'Ust. Ibrahim Al-Madani';
-            const packageFormatted = activePilgrim?.umrahPackage || 'Multazam';
-            const hotelFormatted = activePilgrim?.hotelMakkah || activePilgrim?.hotel || 'Swissôtel Al Maqam Makkah';
+            const groupFormatted = activePilgrim?.group || '-';
+            const rawTl = matchedGroup?.tourLeader || activePilgrim?.tourLeader || '-';
+            const tlFormatted = rawTl && rawTl !== '-' ? (rawTl.includes('(TL)') ? rawTl : `${rawTl} (TL)`) : '-';
+            const mutawifFormatted = matchedGroup?.mutawif || activePilgrim?.mutawifLocal || '-';
+            const packageFormatted = activePilgrim?.umrahPackage || '-';
+            const hotelFormatted = activePilgrim?.hotelMakkah || activePilgrim?.hotel || '-';
             const depFormatted = activePilgrim?.departureDate 
-              ? `${formatIndoDate(activePilgrim.departureDate)} (CGK - JED)`
-              : '10 Juli 2026 (CGK - JED)';
+              ? `${formatIndoDate(activePilgrim.departureDate)}`
+              : '-';
             const retFormatted = activePilgrim?.returnDate 
-              ? `${formatIndoDate(activePilgrim.returnDate)} (MED - CGK)`
-              : '22 Juli 2026 (MED - CGK)';
+              ? `${formatIndoDate(activePilgrim.returnDate)}`
+              : '-';
 
             return (
               <div className="space-y-7 animate-fade-in">
@@ -1100,10 +1273,20 @@ export default function Pilgrims() {
                     <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
                       <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
                         <CreditCard className="w-4 h-4 text-[#782820] shrink-0" />
-                        <span>ID Jamaah</span>
+                        <span>ID Jamaah (login_id)</span>
                       </div>
                       <span className="font-bold text-gray-900 text-sm text-right font-mono">
-                        {activePilgrim?.id || 'PL-88210'}
+                        {displayId}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
+                      <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
+                        <User className="w-4 h-4 text-[#782820] shrink-0" />
+                        <span>UUID Internal Backend</span>
+                      </div>
+                      <span className="font-bold text-gray-500 text-xs text-right font-mono truncate max-w-[200px] sm:max-w-none">
+                        {activePilgrim?.id}
                       </span>
                     </div>
 
@@ -1113,7 +1296,17 @@ export default function Pilgrims() {
                         <span>Nama Lengkap</span>
                       </div>
                       <span className="font-bold text-gray-900 text-sm text-right">
-                        {activePilgrim?.name || 'H. Ahmad Zaki Al-Farizi'}
+                        {activePilgrim?.name || '-'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
+                      <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
+                        <BookOpen className="w-4 h-4 text-[#782820] shrink-0" />
+                        <span>NIK KTP</span>
+                      </div>
+                      <span className="font-bold text-gray-900 text-sm text-right font-mono">
+                        {activePilgrim?.ktp || '-'}
                       </span>
                     </div>
 
@@ -1149,7 +1342,7 @@ export default function Pilgrims() {
 
                     <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
                       <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
-                        <Users className="w-4 h-4 text-[#782820] shrink-0" />
+                        <User className="w-4 h-4 text-[#782820] shrink-0" />
                         <span>Jenis Kelamin</span>
                       </div>
                       <span className="font-bold text-gray-900 text-sm text-right">
@@ -1160,7 +1353,7 @@ export default function Pilgrims() {
                     <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
                       <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
                         <Calendar className="w-4 h-4 text-[#782820] shrink-0" />
-                        <span>Tanggal Lahir</span>
+                        <span>Tanggal Lahir &amp; Usia</span>
                       </div>
                       <span className="font-bold text-gray-900 text-sm text-right">
                         {birthDateFormatted}
@@ -1179,7 +1372,7 @@ export default function Pilgrims() {
 
                     <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
                       <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
-                        <AlertCircle className="w-4 h-4 text-[#782820] shrink-0" />
+                        <Phone className="w-4 h-4 text-[#782820] shrink-0" />
                         <span>Kontak Darurat</span>
                       </div>
                       <span className="font-bold text-gray-900 text-sm text-right">
@@ -1199,7 +1392,7 @@ export default function Pilgrims() {
                     <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
                       <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
                         <Users className="w-4 h-4 text-[#782820] shrink-0" />
-                        <span>Kloter Saat Ini</span>
+                        <span>Kloter Rombongan</span>
                       </div>
                       <span className="font-bold text-gray-900 text-sm text-right">
                         {groupFormatted}
@@ -1208,8 +1401,8 @@ export default function Pilgrims() {
 
                     <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
                       <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
-                        <UserCheck className="w-4 h-4 text-[#782820] shrink-0" />
-                        <span>Pembimbing (Mutawif)</span>
+                        <User className="w-4 h-4 text-[#782820] shrink-0" />
+                        <span>Tour Leader</span>
                       </div>
                       <span className="font-bold text-gray-900 text-sm text-right">
                         {tlFormatted}
@@ -1228,7 +1421,7 @@ export default function Pilgrims() {
 
                     <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
                       <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
-                        <Package className="w-4 h-4 text-[#782820] shrink-0" />
+                        <FileText className="w-4 h-4 text-[#782820] shrink-0" />
                         <span>Paket Umrah</span>
                       </div>
                       <span className="font-bold text-gray-900 text-sm text-right">
@@ -1238,8 +1431,8 @@ export default function Pilgrims() {
 
                     <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
                       <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
-                        <Building2 className="w-4 h-4 text-[#782820] shrink-0" />
-                        <span>Hotel Penginapan</span>
+                        <Calendar className="w-4 h-4 text-[#782820] shrink-0" />
+                        <span>Hotel Makkah</span>
                       </div>
                       <span className="font-bold text-gray-900 text-sm text-right">
                         {hotelFormatted}
@@ -1248,7 +1441,17 @@ export default function Pilgrims() {
 
                     <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
                       <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
-                        <PlaneTakeoff className="w-4 h-4 text-[#782820] shrink-0" />
+                        <Calendar className="w-4 h-4 text-[#782820] shrink-0" />
+                        <span>Hotel Madinah</span>
+                      </div>
+                      <span className="font-bold text-gray-900 text-sm text-right">
+                        {activePilgrim?.hotelMadinah || '-'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
+                      <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
+                        <Calendar className="w-4 h-4 text-[#782820] shrink-0" />
                         <span>Tanggal Keberangkatan</span>
                       </div>
                       <span className="font-bold text-gray-900 text-sm text-right">
@@ -1258,7 +1461,7 @@ export default function Pilgrims() {
 
                     <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
                       <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
-                        <PlaneLanding className="w-4 h-4 text-[#782820] shrink-0" />
+                        <Calendar className="w-4 h-4 text-[#782820] shrink-0" />
                         <span>Tanggal Kepulangan</span>
                       </div>
                       <span className="font-bold text-gray-900 text-sm text-right">
@@ -1268,376 +1471,363 @@ export default function Pilgrims() {
                   </div>
                 </div>
 
-                {/* Footer Tutup Button */}
-                <div className="flex justify-end pt-2">
-                  <Button 
-                    variant="outline" 
+                <div className="pt-2">
+                  <Button
                     onClick={() => setIsFormModalOpen(false)}
-                    className="rounded-xl h-10 px-6 text-sm font-semibold text-gray-700 border-gray-300 hover:bg-gray-50 cursor-pointer shadow-2xs"
+                    className="w-full h-12 bg-[#740A03] hover:bg-[#580802] text-white font-bold rounded-2xl text-base cursor-pointer shadow-md"
                   >
-                    Tutup
+                    Tutup Detail
                   </Button>
                 </div>
               </div>
             );
           })()}
 
-          {/* TAB 2: FORM TAMBAH / EDIT JAMAAH (Matching the 2 sections: Informasi Pribadi & Rincian Perjalanan) */}
-          {modalTab === 'form-edit' && (
-            <div className="space-y-6">
-              {/* Section 1: INFORMASI PRIBADI */}
-              <div className="bg-white border border-[#cbd5e1] rounded-3xl p-5 sm:p-7 shadow-2xs">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-7 h-7 rounded-lg border border-gray-300 text-gray-800 bg-white flex items-center justify-center text-xs font-bold font-mono shadow-2xs">
-                    1
-                  </div>
-                  <h3 className="text-base sm:text-[17px] font-black text-gray-900 uppercase tracking-wide">
-                    INFORMASI PRIBADI
-                  </h3>
-                </div>
+          {/* TAB 2: FORM TAMBAH & EDIT MASTER JAMAAH (API BACKEND /api/jamaah) */}
+          {(modalTab === 'form-edit' || isFormAddMode) && (
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                savePilgrim();
+              }}
+              className="space-y-6 animate-fade-in"
+            >
+              <div className="bg-emerald-50/70 border border-emerald-200 p-4 rounded-2xl text-xs text-emerald-900 font-medium">
+                {isFormAddMode 
+                  ? "Formulir Tambah Master Jamaah baru. Data akan disimpan secara permanen ke backend Laravel (/api/jamaah)."
+                  : `Mengubah data Jamaah UUID: ${selectedPilgrim?.id}. Perubahan akan disinkronkan ke API (/api/jamaah/${selectedPilgrim?.id}).`}
+              </div>
 
-                <div className="space-y-4">
-                  {/* ID JAMAAH */}
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
-                    <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                      ID JAMAAH *
-                    </label>
-                    <div className="sm:col-span-8">
-                      <Input 
-                        value={formData.id || ''} 
-                        onChange={(e) => setFormData({...formData, id: e.target.value})} 
-                        placeholder="Cth. PL-88210" 
-                        className={`h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base ${formData.id ? 'font-bold text-gray-900' : 'font-normal text-gray-400'} placeholder:text-gray-400 placeholder:font-normal px-4 sm:px-5 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859]`} 
-                      />
-                    </div>
-                  </div>
+              {/* SEKSI 1: IDENTITAS UTAMA (WAJIB BACKEND) */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[#740A03] pb-1 border-b border-gray-100">
+                  1. Identitas Utama &amp; Login
+                </h3>
 
-                  {/* NAMA LENGKAP */}
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
-                    <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                      NAMA LENGKAP *
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-700">
+                      ID Login Jamaah (login_id) <span className="text-red-500">*</span>
                     </label>
-                    <div className="sm:col-span-8">
-                      <Input 
-                        value={formData.name || ''} 
-                        onChange={(e) => setFormData({...formData, name: e.target.value})} 
-                        placeholder="Cth. H. Ahmad Zaki Al-Farizi" 
-                        className={`h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base ${formData.name ? 'font-bold text-gray-900' : 'font-normal text-gray-400'} placeholder:text-gray-400 placeholder:font-normal px-4 sm:px-5 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859]`} 
-                      />
-                    </div>
+                    <Input 
+                      value={formData.pilgrimId || ''} 
+                      onChange={(e) => setFormData({ ...formData, pilgrimId: e.target.value })}
+                      maxLength={10}
+                      placeholder="Misal: JMH-001"
+                      className={`h-10 rounded-xl font-mono ${fieldErrors.login_id ? 'border-red-500 ring-1 ring-red-500' : ''}`}
+                    />
+                    <p className="text-[11px] text-gray-400">Max 10 karakter (kode login mobile).</p>
+                    {fieldErrors.login_id && (
+                      <p className="text-[11px] text-red-600 font-semibold">{fieldErrors.login_id.join(', ')}</p>
+                    )}
                   </div>
 
-                  {/* NOMOR PASPOR */}
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
-                    <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                      NOMOR PASPOR
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-700">
+                      NIK KTP <span className="text-red-500">*</span>
                     </label>
-                    <div className="sm:col-span-8">
-                      <Input 
-                        value={formData.passport || ''} 
-                        onChange={(e) => setFormData({...formData, passport: e.target.value})} 
-                        placeholder="Cth. X-99821014" 
-                        className={`h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base ${formData.passport ? 'font-bold text-gray-900' : 'font-normal text-gray-400'} placeholder:text-gray-400 placeholder:font-normal px-4 sm:px-5 uppercase focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859]`}
-                      />
-                    </div>
+                    <Input 
+                      value={formData.ktp || ''} 
+                      onChange={(e) => setFormData({ ...formData, ktp: e.target.value })}
+                      maxLength={16}
+                      placeholder="16 Digit NIK KTP"
+                      className={`h-10 rounded-xl font-mono ${fieldErrors.nik ? 'border-red-500 ring-1 ring-red-500' : ''}`}
+                    />
+                    {fieldErrors.nik && (
+                      <p className="text-[11px] text-red-600 font-semibold">{fieldErrors.nik.join(', ')}</p>
+                    )}
                   </div>
 
-                  {/* NOMOR VISA UMRAH */}
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
-                    <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                      NOMOR VISA UMRAH
+                  <div className="space-y-1 sm:col-span-1">
+                    <label className="text-xs font-bold text-gray-700">
+                      Nama Lengkap Jamaah <span className="text-red-500">*</span>
                     </label>
-                    <div className="sm:col-span-8">
-                      <Input 
-                        value={formData.visaNumber || ''} 
-                        onChange={(e) => setFormData({...formData, visaNumber: e.target.value})} 
-                        placeholder="Cth. VSA-2026-99210-SA" 
-                        className={`h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base ${formData.visaNumber ? 'font-bold text-gray-900' : 'font-normal text-gray-400'} placeholder:text-gray-400 placeholder:font-normal px-4 sm:px-5 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859]`}
-                      />
-                    </div>
-                  </div>
-
-                  {/* KEWARGANEGARAAN */}
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
-                    <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                      KEWARGANEGARAAN
-                    </label>
-                    <div className="sm:col-span-8">
-                      <Input 
-                        value={formData.nationality || 'Indonesia'} 
-                        onChange={(e) => setFormData({...formData, nationality: e.target.value})} 
-                        placeholder="Indonesia" 
-                        className={`h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base ${formData.nationality ? 'font-bold text-gray-900' : 'font-normal text-gray-400'} placeholder:text-gray-400 placeholder:font-normal px-4 sm:px-5 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859]`}
-                      />
-                    </div>
-                  </div>
-
-                  {/* JENIS KELAMIN */}
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
-                    <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                      JENIS KELAMIN
-                    </label>
-                    <div className="sm:col-span-8">
-                      <select 
-                        value={formData.gender || ''}
-                        onChange={(e) => setFormData({...formData, gender: e.target.value as any})}
-                        className={`h-12 sm:h-13 w-full rounded-2xl border border-gray-300 bg-white px-4 sm:px-5 text-base ${formData.gender ? 'font-bold text-gray-900' : 'font-normal text-gray-400'} focus:outline-none focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859] cursor-pointer`}
-                      >
-                        <option value="" className="text-gray-400 font-normal">Pilih Jenis Kelamin</option>
-                        <option value="Pria (Male)" className="text-gray-900 font-normal">Pria (Male)</option>
-                        <option value="Wanita (Female)" className="text-gray-900 font-normal">Wanita (Female)</option>
-                        <option value="Laki-laki" className="text-gray-900 font-normal">Laki-laki</option>
-                        <option value="Perempuan" className="text-gray-900 font-normal">Perempuan</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* TANGGAL LAHIR & USIA */}
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
-                    <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                      TANGGAL LAHIR
-                    </label>
-                    <div className="sm:col-span-8 grid grid-cols-1 sm:grid-cols-12 gap-3">
-                      <div className="sm:col-span-7">
-                        <Input 
-                          type="date"
-                          value={formData.birthDate || ''} 
-                          onChange={(e) => {
-                            const bDate = e.target.value;
-                            let computedAge = formData.age;
-                            if (bDate) {
-                              const birthYear = new Date(bDate).getFullYear();
-                              const currentYear = new Date().getFullYear();
-                              if (!isNaN(birthYear) && birthYear > 1900 && birthYear <= currentYear) {
-                                computedAge = currentYear - birthYear;
-                              }
-                            }
-                            setFormData({
-                              ...formData, 
-                              birthDate: bDate,
-                              age: computedAge
-                            });
-                          }} 
-                          className={`h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base ${formData.birthDate ? 'font-bold text-gray-900' : 'font-normal text-gray-400'} px-4 sm:px-5 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859]`}
-                        />
-                      </div>
-                      <div className="sm:col-span-5 flex items-center gap-2">
-                        <Input 
-                          type="number"
-                          value={formData.age !== undefined && formData.age !== 0 ? formData.age : ''} 
-                          onChange={(e) => setFormData({...formData, age: Number(e.target.value)})} 
-                          placeholder="Usia (Thn)" 
-                          className={`h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base ${formData.age ? 'font-bold text-gray-900' : 'font-normal text-gray-400'} placeholder:text-gray-400 placeholder:font-normal px-4 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859]`}
-                        />
-                        <span className="text-xs font-bold text-gray-500 whitespace-nowrap">Tahun</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* NOMOR TELEPON */}
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
-                    <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                      NOMOR TELEPON
-                    </label>
-                    <div className="sm:col-span-8">
-                      <Input 
-                        value={formData.phone || ''} 
-                        onChange={(e) => setFormData({...formData, phone: e.target.value})} 
-                        placeholder="Cth. +62 812-3456-7890" 
-                        className={`h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base ${formData.phone ? 'font-bold text-gray-900' : 'font-normal text-gray-400'} placeholder:text-gray-400 placeholder:font-normal px-4 sm:px-5 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859]`}
-                      />
-                    </div>
-                  </div>
-
-                  {/* KONTAK DARURAT */}
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
-                    <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                      KONTAK DARURAT
-                    </label>
-                    <div className="sm:col-span-8">
-                      <Input 
-                        value={formData.emergencyContact || ''} 
-                        onChange={(e) => setFormData({...formData, emergencyContact: e.target.value})} 
-                        placeholder="Cth. Keluarga Jamaah (+62 811-9988-7766)" 
-                        className={`h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base ${formData.emergencyContact ? 'font-bold text-gray-900' : 'font-normal text-gray-400'} placeholder:text-gray-400 placeholder:font-normal px-4 sm:px-5 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859]`}
-                      />
-                    </div>
+                    <Input 
+                      value={formData.name || ''} 
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      placeholder="Sesuai KTP / Paspor"
+                      className={`h-10 rounded-xl ${fieldErrors.full_name ? 'border-red-500 ring-1 ring-red-500' : ''}`}
+                    />
+                    {fieldErrors.full_name && (
+                      <p className="text-[11px] text-red-600 font-semibold">{fieldErrors.full_name.join(', ')}</p>
+                    )}
                   </div>
                 </div>
               </div>
 
-              {/* Section 2: RINCIAN PERJALANAN */}
-              <div className="bg-white border border-[#cbd5e1] rounded-3xl p-5 sm:p-7 shadow-2xs">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-7 h-7 rounded-lg border border-gray-300 text-gray-800 bg-white flex items-center justify-center text-xs font-bold font-mono shadow-2xs">
-                    2
-                  </div>
-                  <h3 className="text-base sm:text-[17px] font-black text-gray-900 uppercase tracking-wide">
-                    RINCIAN PERJALANAN
-                  </h3>
-                </div>
+              {/* SEKSI 2: INFORMASI PRIBADI & KONTAK */}
+              <div className="space-y-3 pt-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[#740A03] pb-1 border-b border-gray-100">
+                  2. Informasi Biodata &amp; Kontak
+                </h3>
 
-                <div className="space-y-4">
-                  {/* KLOTER SAAT INI */}
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
-                    <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                      KLOTER SAAT INI
-                    </label>
-                    <div className="sm:col-span-8">
-                      <select 
-                        value={formData.group || ''} 
-                        onChange={(e) => {
-                          const selectedGroupName = e.target.value;
-                          const foundGrp = groups.find(g => g.name === selectedGroupName);
-                          setFormData({
-                            ...formData, 
-                            group: selectedGroupName,
-                            tourLeader: foundGrp?.tourLeader ? (foundGrp.tourLeader.includes('(TL)') ? foundGrp.tourLeader : `${foundGrp.tourLeader} (TL)`) : formData.tourLeader,
-                            mutawifLocal: foundGrp?.mutawif || formData.mutawifLocal,
-                          });
-                        }} 
-                        className={`h-12 sm:h-13 w-full rounded-2xl border border-gray-300 bg-white px-4 sm:px-5 text-base ${formData.group ? 'font-bold text-gray-900' : 'font-normal text-gray-400'} focus:outline-none focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859] cursor-pointer`}
-                      >
-                        <option value="" className="text-gray-400 font-normal">-- Pilih Kloter Keberangkatan --</option>
-                        {groups.map(g => (
-                          <option key={g.id} value={g.name} className="text-gray-900 font-normal">{g.name}</option>
-                        ))}
-                      </select>
-                    </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-700">Jenis Kelamin</label>
+                    <select
+                      value={formData.gender || 'Laki-laki'}
+                      onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+                      className="flex h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    >
+                      <option value="Laki-laki">Laki-laki (L)</option>
+                      <option value="Perempuan">Perempuan (P)</option>
+                    </select>
+                    {fieldErrors.gender && (
+                      <p className="text-[11px] text-red-600 font-semibold">{fieldErrors.gender.join(', ')}</p>
+                    )}
                   </div>
 
-                  {/* PEMBIMBING (MUTAWIF) */}
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
-                    <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                      PEMBIMBING (MUTAWIF)
-                    </label>
-                    <div className="sm:col-span-8">
-                      <Input 
-                        value={formData.tourLeader || ''} 
-                        onChange={(e) => setFormData({...formData, tourLeader: e.target.value})} 
-                        placeholder="Cth. Ust. H. Muhammad Ridwan (TL)" 
-                        className={`h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base ${formData.tourLeader ? 'font-bold text-gray-900' : 'font-normal text-gray-400'} placeholder:text-gray-400 placeholder:font-normal px-4 sm:px-5 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859]`}
-                      />
-                    </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-700">Tanggal Lahir</label>
+                    <Input 
+                      type="date"
+                      value={formData.birthDate || ''} 
+                      onChange={(e) => setFormData({ ...formData, birthDate: e.target.value })}
+                      className="h-10 rounded-xl text-xs"
+                    />
                   </div>
 
-                  {/* MUTAWIF LOKAL */}
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
-                    <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                      MUTAWIF LOKAL
-                    </label>
-                    <div className="sm:col-span-8">
-                      <Input 
-                        value={formData.mutawifLocal || ''} 
-                        onChange={(e) => setFormData({...formData, mutawifLocal: e.target.value})} 
-                        placeholder="Cth. Ust. Ibrahim Al-Madani" 
-                        className={`h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base ${formData.mutawifLocal ? 'font-bold text-gray-900' : 'font-normal text-gray-400'} placeholder:text-gray-400 placeholder:font-normal px-4 sm:px-5 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859]`}
-                      />
-                    </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-700">Nomor Telepon / HP</label>
+                    <Input 
+                      value={formData.phone || ''} 
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      placeholder="+62 812-..."
+                      className="h-10 rounded-xl"
+                    />
                   </div>
 
-                  {/* PAKET UMRAH */}
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
-                    <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                      PAKET UMRAH
-                    </label>
-                    <div className="sm:col-span-8">
-                      <select 
-                        value={formData.umrahPackage || ''} 
-                        onChange={(e) => setFormData({...formData, umrahPackage: e.target.value})} 
-                        className={`h-12 sm:h-13 w-full rounded-2xl border border-gray-300 bg-white px-4 sm:px-5 text-base ${formData.umrahPackage ? 'font-bold text-gray-900' : 'font-normal text-gray-400'} focus:outline-none focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859] cursor-pointer`}
-                      >
-                        <option value="" className="text-gray-400 font-normal">Pilih Paket Umrah</option>
-                        <option value="Multazam" className="text-gray-900 font-normal">Multazam</option>
-                        <option value="Raudhah" className="text-gray-900 font-normal">Raudhah</option>
-                        <option value="Yamani" className="text-gray-900 font-normal">Yamani</option>
-                        <option value="VIP 9 Hari" className="text-gray-900 font-normal">VIP 9 Hari</option>
-                        <option value="Reguler 12 Hari" className="text-gray-900 font-normal">Reguler 12 Hari</option>
-                        <option value="Reguler 9 Hari" className="text-gray-900 font-normal">Reguler 9 Hari</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* HOTEL PENGINAPAN */}
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
-                    <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                      HOTEL PENGINAPAN
-                    </label>
-                    <div className="sm:col-span-8">
-                      <Input 
-                        value={formData.hotelMakkah || formData.hotel || ''} 
-                        onChange={(e) => setFormData({...formData, hotelMakkah: e.target.value, hotel: e.target.value})} 
-                        placeholder="Cth. Swissôtel Al Maqam Makkah" 
-                        className={`h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base ${(formData.hotelMakkah || formData.hotel) ? 'font-bold text-gray-900' : 'font-normal text-gray-400'} placeholder:text-gray-400 placeholder:font-normal px-4 sm:px-5 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859]`}
-                      />
-                    </div>
-                  </div>
-
-                  {/* TANGGAL KEBERANGKATAN */}
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
-                    <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                      TANGGAL KEBERANGKATAN
-                    </label>
-                    <div className="sm:col-span-8">
-                      <Input 
-                        type="date" 
-                        value={formData.departureDate || ''} 
-                        onChange={(e) => {
-                          setFormData({...formData, departureDate: e.target.value});
-                          setModifiedDates(prev => ({ ...prev, departureDate: true }));
-                        }} 
-                        className={`h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base ${formData.departureDate ? 'font-bold text-gray-900' : 'font-normal text-gray-400'} px-4 sm:px-5 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859]`} 
-                      />
-                    </div>
-                  </div>
-
-                  {/* TANGGAL KEPULANGAN */}
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
-                    <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                      TANGGAL KEPULANGAN
-                    </label>
-                    <div className="sm:col-span-8">
-                      <Input 
-                        type="date" 
-                        value={formData.returnDate || ''} 
-                        onChange={(e) => {
-                          setFormData({...formData, returnDate: e.target.value});
-                          setModifiedDates(prev => ({ ...prev, returnDate: true }));
-                        }} 
-                        className={`h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base ${formData.returnDate ? 'font-bold text-gray-900' : 'font-normal text-gray-400'} px-4 sm:px-5 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859]`} 
-                      />
-                    </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-700">Kontak Darurat</label>
+                    <Input 
+                      value={formData.emergencyContact || ''} 
+                      onChange={(e) => setFormData({ ...formData, emergencyContact: e.target.value })}
+                      placeholder="Nama & HP Kerabat"
+                      className="h-10 rounded-xl"
+                    />
                   </div>
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
+              {/* SEKSI 3: DOKUMEN PERJALANAN */}
+              <div className="space-y-3 pt-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[#740A03] pb-1 border-b border-gray-100">
+                  3. Dokumen Perjalanan
+                </h3>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-700">Nomor Paspor</label>
+                    <Input 
+                      value={formData.passport || ''} 
+                      onChange={(e) => setFormData({ ...formData, passport: e.target.value })}
+                      placeholder="Contoh: X-99821014"
+                      className="h-10 rounded-xl"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-700">Nomor Visa Umrah</label>
+                    <Input 
+                      value={formData.visaNumber || ''} 
+                      onChange={(e) => setFormData({ ...formData, visaNumber: e.target.value })}
+                      placeholder="Contoh: VSA-2026-99210"
+                      className="h-10 rounded-xl"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-700">Kewarganegaraan</label>
+                    <Input 
+                      value={formData.nationality ?? ''} 
+                      onChange={(e) => setFormData({ ...formData, nationality: e.target.value })}
+                      placeholder="Indonesia"
+                      className="h-10 rounded-xl"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* SEKSI 4: RELASI PAKET & KLOTER */}
+              <div className="space-y-3 pt-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[#740A03] pb-1 border-b border-gray-100">
+                  4. Relasi Paket &amp; Kloter Rombongan
+                </h3>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-gray-700">Paket Umrah</label>
+                      {packageFetchError && (
+                        <span className="text-[10px] text-amber-600 font-semibold">{packageFetchError}</span>
+                      )}
+                    </div>
+                    <select
+                      value={formData.packageId || ''}
+                      onChange={(e) => setFormData({ ...formData, packageId: e.target.value })}
+                      className="flex h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    >
+                      <option value="">Belum Memilih Paket (Kosong)</option>
+                      {formData.packageId && !packagesList.some(p => p.id === formData.packageId) && (
+                        <option value={formData.packageId}>
+                          {selectedPilgrim?.umrahPackage && selectedPilgrim.umrahPackage !== '-' ? selectedPilgrim.umrahPackage : formData.packageId}
+                        </option>
+                      )}
+                      {packagesList.map(pkg => (
+                        <option key={pkg.id} value={pkg.id}>{pkg.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-gray-700">Kloter Rombongan</label>
+                      {kloterFetchError && (
+                        <span className="text-[10px] text-amber-600 font-semibold">{kloterFetchError}</span>
+                      )}
+                    </div>
+                    <select
+                      value={formData.kloterId || ''}
+                      onChange={(e) => setFormData({ ...formData, kloterId: e.target.value })}
+                      className="flex h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    >
+                      <option value="">Belum Memilih Kloter (Kosong)</option>
+                      {formData.kloterId && !klotersList.some(k => k.id === formData.kloterId) && (
+                        <option value={formData.kloterId}>
+                          {selectedPilgrim?.group && selectedPilgrim.group !== '-' ? selectedPilgrim.group : formData.kloterId}
+                        </option>
+                      )}
+                      {klotersList.map(klt => (
+                        <option key={klt.id} value={klt.id}>{klt.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* SEKSI 5: LOGISTIK & PEMBIMBING */}
+              <div className="space-y-3 pt-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[#740A03] pb-1 border-b border-gray-100">
+                  5. Logistik Hotel, Tanggal &amp; Pembimbing
+                </h3>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-700">Hotel Makkah</label>
+                    <Input 
+                      value={formData.hotelMakkah ?? ''} 
+                      onChange={(e) => setFormData({ ...formData, hotelMakkah: e.target.value })}
+                      placeholder="Nama Hotel Makkah"
+                      className="h-10 rounded-xl"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-700">Hotel Madinah</label>
+                    <Input 
+                      value={formData.hotelMadinah || ''} 
+                      onChange={(e) => setFormData({ ...formData, hotelMadinah: e.target.value })}
+                      placeholder="Nama Hotel Madinah"
+                      className="h-10 rounded-xl"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-700">Tanggal Keberangkatan</label>
+                    <Input 
+                      type="date"
+                      value={formData.departureDate || ''} 
+                      onChange={(e) => setFormData({ ...formData, departureDate: e.target.value })}
+                      className="h-10 rounded-xl text-xs"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-700">Tanggal Kepulangan</label>
+                    <Input 
+                      type="date"
+                      value={formData.returnDate || ''} 
+                      onChange={(e) => setFormData({ ...formData, returnDate: e.target.value })}
+                      className={`h-10 rounded-xl text-xs ${fieldErrors.return_date ? 'border-red-500 ring-1 ring-red-500' : ''}`}
+                    />
+                    {fieldErrors.return_date && (
+                      <p className="text-[11px] text-red-600 font-semibold">{fieldErrors.return_date.join(', ')}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-700">Tour Leader (TL)</label>
+                    <Input 
+                      value={formData.tourLeader || ''} 
+                      onChange={(e) => setFormData({ ...formData, tourLeader: e.target.value })}
+                      placeholder="Nama Tour Leader"
+                      className="h-10 rounded-xl"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-700">Mutawif Lokal</label>
+                    <Input 
+                      value={formData.mutawifLocal || ''} 
+                      onChange={(e) => setFormData({ ...formData, mutawifLocal: e.target.value })}
+                      placeholder="Nama Mutawif"
+                      className="h-10 rounded-xl"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-700">Status Jamaah</label>
+                    <select
+                      value={formData.status || 'active'}
+                      onChange={(e) => setFormData({ ...formData, status: e.target.value as 'active' | 'archived' })}
+                      className="flex h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    >
+                      <option value="active">Aktif (Active)</option>
+                      <option value="archived">Diarsipkan (Archived)</option>
+                    </select>
+                    <p className="text-[11px] text-gray-400">Arsipkan untuk menonaktifkan tanpa menghapus data.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* ACTION BUTTONS */}
+              <div className="pt-4 flex gap-3 border-t border-gray-100">
                 <Button 
+                  type="button" 
                   variant="outline" 
-                  onClick={() => setIsFormModalOpen(false)} 
-                  className="h-12 rounded-2xl px-7 font-bold text-gray-800 border-gray-300 hover:bg-gray-50 text-base cursor-pointer shadow-2xs"
+                  disabled={isSubmitting}
+                  onClick={() => setIsFormModalOpen(false)}
+                  className="flex-1 h-11 rounded-2xl text-xs font-semibold cursor-pointer"
                 >
                   Batal
                 </Button>
                 <Button 
-                  onClick={savePilgrim} 
-                  className="h-12 rounded-2xl px-8 bg-[#00a859] hover:bg-[#009b50] text-white font-bold text-base shadow-2xs cursor-pointer"
+                  type="submit" 
+                  disabled={isSubmitting}
+                  className="flex-1 h-11 bg-[#740A03] hover:bg-[#580802] text-white font-bold rounded-2xl text-xs cursor-pointer shadow-md"
                 >
-                  {selectedPilgrim ? 'Simpan Perubahan' : 'Simpan Data Jamaah'}
+                  {isSubmitting ? (
+                    <span className="flex items-center gap-2">
+                      <RefreshCw className="w-4 h-4 animate-spin" /> Menyimpan...
+                    </span>
+                  ) : (
+                    <span>{isFormAddMode ? "Simpan Jamaah Baru" : "Simpan Perubahan"}</span>
+                  )}
                 </Button>
               </div>
-            </div>
+            </form>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Confirm Delete Dialog */}
       <ConfirmDeleteDialog 
-        isOpen={isDeleteDialogOpen} 
-        onClose={() => setIsDeleteDialogOpen(false)} 
+        isOpen={isDeleteDialogOpen}
+        onClose={() => {
+          if (!isDeleting) setIsDeleteDialogOpen(false);
+        }}
         onConfirm={confirmDelete}
-        itemCount={selectedIds.size}
+        itemCount={selectedIds.size || 1}
       />
     </div>
   );

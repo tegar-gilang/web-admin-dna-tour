@@ -40,6 +40,7 @@ export default function Reports() {
     rooms, 
     staffStocks, 
     financeTransactions,
+    financeExpenses,
     broadcasts
   } = useStore();
 

@@ -27,6 +27,11 @@ export type Pilgrim = {
   age: number;
   phone: string;
   
+  // Relasi Backend
+  packageId?: string;
+  kloterId?: string;
+  status?: string;
+
   // Detail Informasi Pribadi & Rincian Perjalanan
   visaNumber?: string;
   nationality?: string;
@@ -323,11 +328,19 @@ type StoreState = {
   setFinanceError: (error: string | null) => void;
 
   financeExpenses: FinanceTransaction[];
-  setFinanceExpenses: (expenses: FinanceTransaction[]) => void;
+  setFinanceExpenses: (expenses: FinanceTransaction[] | ((prev: FinanceTransaction[]) => FinanceTransaction[])) => void;
   isFetchingExpenses: boolean;
   expenseFetchError: string | null;
   setExpenseLoading: (isLoading: boolean) => void;
   setExpenseError: (error: string | null) => void;
+
+  financeSummary: {
+    total_income: number;
+    total_expense: number;
+    total_receivable: number;
+    net_balance: number;
+  };
+  setFinanceSummary: (summary: { total_income: number; total_expense: number; total_receivable: number; net_balance: number }) => void;
 
   // Broadcast actions
   addBroadcast: (b: BroadcastItem) => void;

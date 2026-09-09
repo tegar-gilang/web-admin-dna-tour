@@ -1013,7 +1013,7 @@ const handleConfirmQuickPay = async () => {
               <div className="bg-red-50/60 p-4 rounded-xl border border-red-100 shadow-2xs flex flex-col justify-between">
                 <span className="text-[11px] font-bold text-red-700 uppercase tracking-wider block">Total Pengeluaran</span>
                 <span className="text-base font-bold text-red-900 block mt-1 tracking-tight font-mono">
-                  Rp {totalExpense.toLocaleString('id-ID')}
+                  Rp {total_expense.toLocaleString('id-ID')}
                 </span>
                 <span className="text-xs text-red-700 block mt-1 font-medium">Pengeluaran Terverifikasi</span>
               </div>
