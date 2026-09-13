@@ -4,6 +4,7 @@ import { financeService } from '@/core/services/financeService';
 import { expenseService } from '@/core/services/expenseService';
 import { registrationService, RegistrationOption } from '@/core/services/registrationService';
 import { financeSummaryService } from '@/core/services/financeSummaryService';
+import { otherIncomeService } from '@/core/services/otherIncomeService';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
@@ -91,7 +92,13 @@ export default function Finance() {
       setFinanceError(null);
       try {
         const payments = await financeService.getPayments();
-        setFinanceTransactions(payments);
+        let otherIncomes: FinanceTransaction[] = [];
+        try {
+          otherIncomes = await otherIncomeService.getOtherIncomes();
+        } catch (e) {
+          console.error('Failed to fetch other incomes:', e);
+        }
+        setFinanceTransactions([...payments, ...otherIncomes]);
       } catch (error: any) {
         console.error('Failed to fetch payments:', error);
         setFinanceError(error.message || 'Gagal memuat data pembayaran');
@@ -119,14 +126,31 @@ export default function Finance() {
     fetchExpenses();
   }, [setFinanceExpenses, setExpenseLoading, setExpenseError]);
 
+  useEffect(() => {
+    const fetchFinanceSummary = async () => {
+      try {
+        const summary = await financeSummaryService.getSummary();
+        setFinanceSummary(summary);
+      } catch (error) {
+        console.error('Gagal mengambil finance summary:', error);
+      }
+    };
+
+    fetchFinanceSummary();
+  }, [setFinanceSummary]);
+
   const [registrations, setRegistrations] = useState<RegistrationOption[]>([]);
   useEffect(() => {
     const fetchRegistrations = async () => {
       try {
         const data = await registrationService.getRegistrationOptions();
         if (data) setRegistrations(data);
+        const fullRegistrations = await registrationService.getRegistrations();
+        if (fullRegistrations && fullRegistrations.length > 0) {
+          useStore.getState().setPilgrims(fullRegistrations);
+        }
       } catch (error) {
-        console.error('Failed to fetch registrations for dropdown', error);
+        console.error('Failed to fetch registrations for finance', error);
       }
     };
     fetchRegistrations();
@@ -170,16 +194,26 @@ export default function Finance() {
     if (deleteItemType === 'Pengeluaran') {
       try {
         await expenseService.deleteExpense(deleteItemId);
-        // Remove from financeExpenses state
-        setFinanceExpenses((prev) => prev.filter((e) => e.id !== deleteItemId));
+        setFinanceExpenses(financeExpenses.filter((e) => e.id !== deleteItemId));
+        const summary = await financeSummaryService.getSummary();
+        setFinanceSummary(summary);
         toast('Data pengeluaran berhasil dihapus.', 'success');
       } catch (err) {
         toast(`Gagal menghapus pengeluaran: ${err instanceof Error ? err.message : String(err)}`,'error');
-        return; // keep dialog open on error
+        return;
       }
     } else {
-      deleteTransaction(deleteItemId);
-      toast('Data berhasil dihapus.', 'success');
+      try {
+        await financeService.deletePayment(deleteItemId);
+        const refreshed = await financeService.getPayments();
+        setFinanceTransactions(refreshed);
+        const summary = await financeSummaryService.getSummary();
+        setFinanceSummary(summary);
+        toast('Data pembayaran berhasil dihapus.', 'success');
+      } catch (err) {
+        toast(`Gagal menghapus pembayaran: ${err instanceof Error ? err.message : String(err)}`,'error');
+        return;
+      }
     }
     // Cleanup dialog state
     setDeleteItemId(null);
@@ -247,62 +281,64 @@ export default function Finance() {
     setIsEditPilgrimPaymentModalOpen(true);
   };
 
-  const handleSavePilgrimPayment = () => {
+  const handleSavePilgrimPayment = async () => {
     if (!selectedPilgrimForEditPay) return;
-    const newTotal = Number(editPilgrimPayForm.totalAmount) || 30000000;
     const newPaid = Number(editPilgrimPayForm.paidAmount) || 0;
-    const isLunas = newPaid >= newTotal && newTotal > 0;
-    const payOpt: 'Bayar Lunas' | 'DP' | 'Belum Bayar' = isLunas ? 'Bayar Lunas' : (newPaid > 0 ? 'DP' : 'Belum Bayar');
+    const paymentType: 'down_payment' | 'full_payment' =
+      editPilgrimPayForm.paymentOption === 'Bayar Lunas' ? 'full_payment' : 'down_payment';
 
-    // Synchronize or create matching transaction
-    const existingTx = financeTransactions.find(t => 
-      (t.pilgrimId && t.pilgrimId === selectedPilgrimForEditPay.id) || 
-      (t.referenceNo && t.referenceNo === `REG-${selectedPilgrimForEditPay.id}`) ||
-      (t.pilgrimName && t.pilgrimName.trim().toLowerCase() === selectedPilgrimForEditPay.name.trim().toLowerCase())
+    const matchedRegistration = registrations.find(
+      (r) => r.full_name.toLowerCase() === selectedPilgrimForEditPay.name.toLowerCase()
+    );
+    const realRegistrationId = matchedRegistration
+      ? matchedRegistration.registration_id
+      : selectedPilgrimForEditPay.id;
+
+    const existingTx = financeTransactions.find(
+      (t) =>
+        t.id === selectedPilgrimForEditPay.id ||
+        (t.pilgrimId && t.pilgrimId === selectedPilgrimForEditPay.id) ||
+        (t.pilgrimName &&
+          t.pilgrimName.trim().toLowerCase() === selectedPilgrimForEditPay.name.trim().toLowerCase())
     );
 
-    if (existingTx) {
-      if (newPaid <= 0) {
-        deleteTransaction(existingTx.id);
-      } else {
-        updateTransaction(existingTx.id, {
-          pilgrimId: selectedPilgrimForEditPay.id,
-          pilgrimName: selectedPilgrimForEditPay.name,
+    try {
+      if (existingTx) {
+        if (newPaid <= 0) {
+          await financeService.deletePayment(existingTx.id);
+        } else {
+          await financeService.updatePayment(existingTx.id, {
+            amount: newPaid,
+            payment_type: paymentType,
+            payment_method: editPilgrimPayForm.paymentMethod,
+            payment_date: editPilgrimPayForm.paymentDate || todayStr,
+            notes: editPilgrimPayForm.paymentNotes,
+          });
+        }
+      } else if (newPaid > 0) {
+        await financeService.createPayment(realRegistrationId, {
           amount: newPaid,
-          type: isLunas ? 'Pemasukan (Lunas)' : 'Pemasukan (DP)',
-          paymentMethod: editPilgrimPayForm.paymentMethod || existingTx.paymentMethod,
-          date: editPilgrimPayForm.paymentDate || existingTx.date,
-          notes: editPilgrimPayForm.paymentNotes || existingTx.notes,
-          referenceNo: `REG-${selectedPilgrimForEditPay.id}`
+          payment_type: paymentType,
+          payment_method: editPilgrimPayForm.paymentMethod,
+          payment_date: editPilgrimPayForm.paymentDate || todayStr,
+          notes: editPilgrimPayForm.paymentNotes,
         });
       }
-    } else if (newPaid > 0) {
-      addTransaction({
-        id: `TRX-${Date.now().toString().slice(-6)}`,
-        pilgrimId: selectedPilgrimForEditPay.id,
-        pilgrimName: selectedPilgrimForEditPay.name,
-        type: isLunas ? 'Pemasukan (Lunas)' : 'Pemasukan (DP)',
-        category: 'Pendaftaran Umrah',
-        amount: newPaid,
-        paymentMethod: editPilgrimPayForm.paymentMethod || 'Transfer Bank BCA',
-        date: editPilgrimPayForm.paymentDate || todayStr,
-        status: 'Berhasil',
-        notes: editPilgrimPayForm.paymentNotes || 'Penyesuaian Data Pembayaran Jamaah',
-        referenceNo: `REG-${selectedPilgrimForEditPay.id}`
-      });
+
+      const refreshed = await financeService.getPayments();
+      setFinanceTransactions(refreshed);
+
+      const summary = await financeSummaryService.getSummary();
+      setFinanceSummary(summary);
+
+      toast(`Data pembayaran untuk ${selectedPilgrimForEditPay.name} berhasil diperbarui!`, "success");
+      setIsEditPilgrimPaymentModalOpen(false);
+    } catch (e) {
+      toast(
+        `Gagal memperbarui pembayaran: ${e instanceof Error ? e.message : String(e)}`,
+        "error"
+      );
     }
-
-    updatePilgrim(selectedPilgrimForEditPay.id, {
-      totalAmount: newTotal,
-      paidAmount: newPaid,
-      paymentOption: payOpt,
-      paymentMethod: editPilgrimPayForm.paymentMethod,
-      paymentDate: editPilgrimPayForm.paymentDate || todayStr,
-      paymentNotes: editPilgrimPayForm.paymentNotes
-    });
-
-    toast(`Data pembayaran & piutang untuk ${selectedPilgrimForEditPay.name} berhasil diperbarui!`, "success");
-    setIsEditPilgrimPaymentModalOpen(false);
   };
 
   const handleViewTransactionDetail = (tx: FinanceTransaction) => {
@@ -371,7 +407,7 @@ export default function Finance() {
   }, [financeTransactions, financeExpenses]);
 
   // Use finance summary from backend
-  const { total_income, total_expense, net_balance } = financeSummary;
+  const { total_income, total_expense, total_receivable, net_balance } = financeSummary;
 
   // Expense Breakdown Calculations
   const expenseByCategory = allFinanceTransactions
@@ -432,64 +468,129 @@ export default function Finance() {
     return matchesSearch && matchesMethod && matchesCategory;
   });
 
-// Save General Transaction (Pemasukan / General)
-const handleSaveTransaction = async () => {
-  if (!txForm.pilgrimName) {
-    toast("Nama transaksi wajib diisi.", "error");
-    return;
-  }
-  if (!txForm.amount || txForm.amount <= 0) {
-    toast("Nominal transaksi harus lebih besar dari 0.", "error");
-    return;
-  }
-
-  const matchedRegistration = registrations.find(r => r.full_name.toLowerCase() === txForm.pilgrimName?.toLowerCase());
-  const matchedId = matchedRegistration ? matchedRegistration.registration_id : txForm.pilgrimId;
-
-  if (editingTxId) {
-    updateTransaction(editingTxId, {
-      pilgrimId: matchedId,
-      pilgrimName: txForm.pilgrimName,
-      type: (txForm.type || 'Pemasukan (DP)') as any,
-      category: (txForm.category || 'Pendaftaran Umrah') as any,
-      amount: Number(txForm.amount),
-      paymentMethod: txForm.paymentMethod || 'Transfer Bank BCA',
-      date: txForm.date || todayStr,
-      notes: txForm.notes || '',
-      referenceNo: txForm.referenceNo || `REF-${Math.floor(1000 + Math.random() * 9000)}`
-    });
-    toast("Transaksi berhasil diperbarui.", "success");
-    setEditingTxId(null);
-    setIsAddModalOpen(false);
-  } else {
-    // Map frontend type to backend payment_type
-    const paymentType = (txForm.type === 'Pemasukan (DP)') ? 'down_payment'
-      : (txForm.type === 'Pemasukan (Pelunasan)') ? 'full_payment'
-      : '';
-    if (!paymentType) {
-      toast(`Tipe pemasukan "${txForm.type}" tidak dapat dicatat melalui payment backend.`, "error");
+  // Save General Transaction (Pemasukan / General)
+  const handleSaveTransaction = async () => {
+    if (!txForm.pilgrimName) {
+      toast("Nama transaksi / jamaah wajib diisi.", "error");
       return;
     }
-    const payload = {
-      amount: Number(txForm.amount),
-      payment_type: paymentType,
-      payment_method: txForm.paymentMethod || 'Transfer Bank BCA',
-      payment_date: txForm.date || todayStr,
-      notes: txForm.notes || ''
-    };
-    try {
-      const created = await financeService.createPayment(matchedId, payload);
-      // Refresh finance transactions to include the new payment
-      const refreshed = await financeService.getPayments();
-      setFinanceTransactions(refreshed);
-      toast("Pemasukan baru berhasil dicatat.", "success");
-    } catch (e) {
-      toast(`Gagal mencatat pemasukan: ${e instanceof Error ? e.message : String(e)}`,
-        "error");
+
+    if (!txForm.amount || txForm.amount <= 0) {
+      toast("Nominal transaksi harus lebih besar dari 0.", "error");
+      return;
     }
-    setIsAddModalOpen(false);
-  }
-};
+
+    if (txForm.type === 'Pemasukan Lain') {
+      try {
+        const payload = {
+          source: txForm.pilgrimName,
+          category: txForm.category || 'other',
+          amount: Number(txForm.amount),
+          payment_method: txForm.paymentMethod || 'bca_transfer',
+          income_date: txForm.date || todayStr,
+          notes: txForm.notes || '',
+        };
+        await otherIncomeService.createOtherIncome(payload);
+        const refreshedPayments = await financeService.getPayments();
+        const otherIncomes = await otherIncomeService.getOtherIncomes();
+        setFinanceTransactions([...refreshedPayments, ...otherIncomes]);
+        const summary = await financeSummaryService.getSummary();
+        setFinanceSummary(summary);
+        toast("Pemasukan lain berhasil dicatat.", "success");
+        setIsAddModalOpen(false);
+      } catch (e) {
+        toast(`Gagal mencatat pemasukan lain: ${e instanceof Error ? e.message : String(e)}`, "error");
+      }
+      return;
+    }
+
+    const matchedRegistration = registrations.find(
+      r => r.full_name.toLowerCase() === txForm.pilgrimName?.toLowerCase()
+    );
+
+    const matchedId = matchedRegistration
+      ? matchedRegistration.registration_id
+      : txForm.pilgrimId;
+
+    if (!matchedId) {
+      toast("Jamaah tidak ditemukan. Pilih jamaah dari daftar.", "error");
+      return;
+    }
+
+    if (editingTxId) {
+      try {
+        const paymentType: 'down_payment' | 'full_payment' =
+          txForm.type === 'Pemasukan (DP)'
+            ? 'down_payment'
+            : 'full_payment';
+
+        const payload = {
+          amount: Number(txForm.amount),
+          payment_type: paymentType,
+          payment_method: txForm.paymentMethod || 'bca_transfer',
+          payment_date: txForm.date || todayStr,
+          notes: txForm.notes || '',
+        };
+
+        await financeService.updatePayment(editingTxId, payload);
+
+        const refreshed = await financeService.getPayments();
+        setFinanceTransactions(refreshed);
+        const summary = await financeSummaryService.getSummary();
+        setFinanceSummary(summary);
+
+        toast("Pembayaran berhasil diperbarui.", "success");
+        setEditingTxId(null);
+        setIsAddModalOpen(false);
+      } catch (e) {
+        console.error("Gagal memperbarui pembayaran:", e);
+        toast(
+          `Gagal memperbarui pembayaran: ${
+            e instanceof Error ? e.message : String(e)
+          }`,
+          "error"
+        );
+      }
+    } else {
+      if (txForm.type !== 'Pemasukan (DP)' && txForm.type !== 'Pemasukan (Pelunasan)' && txForm.type !== 'Pemasukan (Lunas)') {
+        toast(
+          `Tipe pemasukan "${txForm.type}" tidak dapat dicatat melalui payment backend.`,
+          "error"
+        );
+        return;
+      }
+
+      const paymentType: 'down_payment' | 'full_payment' =
+        txForm.type === 'Pemasukan (DP)' ? 'down_payment' : 'full_payment';
+
+      const payload = {
+        amount: Number(txForm.amount),
+        payment_type: paymentType,
+        payment_method: txForm.paymentMethod || 'bca_transfer',
+        payment_date: txForm.date || todayStr,
+        notes: txForm.notes || '',
+      };
+
+      try {
+        await financeService.createPayment(matchedId, payload);
+
+        const refreshed = await financeService.getPayments();
+        setFinanceTransactions(refreshed);
+        const summary = await financeSummaryService.getSummary();
+        setFinanceSummary(summary);
+
+        toast("Pemasukan baru berhasil dicatat.", "success");
+        setIsAddModalOpen(false);
+      } catch (e) {
+        toast(
+          `Gagal mencatat pemasukan: ${
+            e instanceof Error ? e.message : String(e)
+          }`,
+          "error"
+        );
+      }
+    }
+  };
 
   // Save Dedicated Expense Note
   const handleSaveExpenseNote = async () => {
@@ -503,49 +604,48 @@ const handleSaveTransaction = async () => {
     }
 
     if (expenseForm.id) {
-      // Edit existing expense via backend
       const payload = {
         vendor: expenseForm.vendorName,
-        category: expenseForm.category as any,
+        category: expenseForm.category,
         amount: Number(expenseForm.amount),
         payment_method: expenseForm.paymentMethod,
         expense_date: expenseForm.date,
-        reference_number: expenseForm.referenceNo || `KWT-${Math.floor(1000 + Math.random() * 9000)}`,
+        reference_number: expenseForm.referenceNo || undefined,
         notes: expenseForm.notes,
       };
       try {
-        const updated = await expenseService.updateExpense(expenseForm.id, payload);
-        // Replace the edited expense in financeExpenses store
-        const newExpenses = financeExpenses.map(e => e.id === updated.id ? updated : e);
-        setFinanceExpenses(newExpenses);
-        // If detail modal showing this expense, update it
-        if (selectedDetailTx && selectedDetailTx.id === updated.id) {
-          setSelectedDetailTx(updated);
-        }
+        await expenseService.updateExpense(expenseForm.id, payload);
+        const refreshedExpenses = await expenseService.getExpenses();
+        setFinanceExpenses(refreshedExpenses);
+        const summary = await financeSummaryService.getSummary();
+        setFinanceSummary(summary);
+
         toast("Catatan pengeluaran berhasil diperbarui.", "success");
         setIsExpenseModalOpen(false);
       } catch (e) {
         toast(`Gagal memperbarui pengeluaran: ${e instanceof Error ? e.message : String(e)}`, "error");
       }
     } else {
-      // Create new expense via backend
       const payload = {
         vendor: expenseForm.vendorName,
-        category: expenseForm.category as any,
+        category: expenseForm.category,
         amount: Number(expenseForm.amount),
         payment_method: expenseForm.paymentMethod,
         expense_date: expenseForm.date || todayStr,
-        reference_number: expenseForm.referenceNo || `KWT-${Math.floor(1000 + Math.random() * 9000)}`,
+        reference_number: expenseForm.referenceNo || undefined,
         notes: expenseForm.notes,
       };
       try {
-        const created = await expenseService.createExpense(payload);
-        // Append the newly created expense to financeExpenses store
-        setFinanceExpenses([...financeExpenses, created]);
+        await expenseService.createExpense(payload);
+        const refreshedExpenses = await expenseService.getExpenses();
+        setFinanceExpenses(refreshedExpenses);
+        const summary = await financeSummaryService.getSummary();
+        setFinanceSummary(summary);
+
         toast("Catatan pengeluaran berhasil disimpan & disinkronkan ke Keuangan!", "success");
         setIsExpenseModalOpen(false);
       } catch (e) {
-        toast(`Gagal menyimpan pengeluaran: ${e instanceof Error ? e.message : String(e)}` , "error");
+        toast(`Gagal menyimpan pengeluaran: ${e instanceof Error ? e.message : String(e)}`, "error");
       }
     }
   };
@@ -587,15 +687,9 @@ const handleConfirmQuickPay = async () => {
     return;
   }
 
-  const currentPaid = selectedPilgrimForPay.paidAmount || 0;
-  const newPaid = currentPaid + payAmount;
-  const total = selectedPilgrimForPay.totalAmount || 30000000;
-  const isLunas = newPaid >= total;
-
-  // Create payment via backend
   const payload = {
     amount: payAmount,
-    payment_type: 'full_payment', // Quick Pay always full payment
+    payment_type: 'full_payment' as const, // Quick Pay always full payment
     payment_method: payMethod,
     payment_date: todayStr,
     notes: payNotes,
@@ -605,21 +699,28 @@ const handleConfirmQuickPay = async () => {
   const realRegistrationId = matchedRegistration ? matchedRegistration.registration_id : selectedPilgrimForPay.id;
   
   try {
-    const created = await financeService.createPayment(realRegistrationId, payload);
-    // Update pilgrim only after successful payment creation
-    updatePilgrim(selectedPilgrimForPay.id, {
-      paidAmount: newPaid,
-      paymentOption: isLunas ? 'Bayar Lunas' : 'DP',
-      paymentMethod: payMethod,
-      paymentDate: todayStr,
-      paymentNotes: payNotes,
-    });
-    addTransaction(created);
+    await financeService.createPayment(realRegistrationId, payload);
+    
+    // Refresh payments, summary & registrations from backend
+    const refreshedPayments = await financeService.getPayments();
+    setFinanceTransactions(refreshedPayments);
+
+    const refreshedSummary = await financeSummaryService.getSummary();
+    setFinanceSummary(refreshedSummary);
+
+    try {
+      const refreshedPilgrims = await registrationService.getRegistrations();
+      if (refreshedPilgrims && refreshedPilgrims.length > 0) {
+        useStore.getState().setPilgrims(refreshedPilgrims);
+      }
+    } catch (regErr) {
+      console.error('Failed to refresh registrations after quick pay:', regErr);
+    }
+
     toast(`Pelunasan sebesar Rp ${payAmount.toLocaleString('id-ID')} berhasil dicatat!`, "success");
     setIsPayModalOpen(false);
   } catch (e) {
     toast(`Gagal mencatat pelunasan: ${e instanceof Error ? e.message : String(e)}`, "error");
-    // keep modal open, no state changes
   }
 };
 
@@ -1013,7 +1114,7 @@ const handleConfirmQuickPay = async () => {
               <div className="bg-red-50/60 p-4 rounded-xl border border-red-100 shadow-2xs flex flex-col justify-between">
                 <span className="text-[11px] font-bold text-red-700 uppercase tracking-wider block">Total Pengeluaran</span>
                 <span className="text-base font-bold text-red-900 block mt-1 tracking-tight font-mono">
-                  Rp {totalExpense.toLocaleString('id-ID')}
+                  Rp {total_expense.toLocaleString('id-ID')}
                 </span>
                 <span className="text-xs text-red-700 block mt-1 font-medium">Pengeluaran Terverifikasi</span>
               </div>
@@ -1680,10 +1781,11 @@ const handleConfirmQuickPay = async () => {
                   </label>
                   <div className="sm:col-span-8">
                     <Input 
-                      value={txForm.referenceNo || ''}
+                      readOnly={!editingTxId}
+                      value={txForm.referenceNo || (editingTxId ? '' : 'Dibuat otomatis oleh backend (PAY-YYYY-XXX)')}
                       onChange={(e) => setTxForm({ ...txForm, referenceNo: e.target.value })}
-                      placeholder="Cth. REF-881029"
-                      className={`h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base ${txForm.referenceNo ? 'font-bold text-gray-900' : 'font-normal text-gray-400'} placeholder:text-gray-400 placeholder:font-normal px-4 sm:px-5 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859]`}
+                      placeholder="Dibuat otomatis oleh sistem"
+                      className={`h-12 sm:h-13 rounded-2xl border-gray-300 bg-gray-50 text-base ${txForm.referenceNo ? 'font-bold text-gray-900' : 'font-normal text-gray-400'} px-4 sm:px-5 w-full`}
                     />
                   </div>
                 </div>

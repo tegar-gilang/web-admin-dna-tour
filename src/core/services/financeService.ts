@@ -1,103 +1,158 @@
 import { apiClient } from './apiClient';
-import { FinanceTransaction } from '../store';
+import {
+  Payment,
+  CreatePaymentPayload,
+  UpdatePaymentPayload,
+  FinanceTransaction,
+  mapPaymentMethodToUI,
+  mapPaymentMethodToBackend,
+} from '@/types/finance';
 
-// Interface based on backend contract
-export interface BackendPayment {
-  id: number | string;
-  registration_id: number | string;
-  amount: number;
-  payment_type: 'down_payment' | 'full_payment' | string;
-  payment_method: string;
-  payment_date: string;
-  notes?: string;
-  status?: string;
-  registration?: {
-    full_name?: string;
-    registration_number?: string;
-  };
-}
+export type { Payment, CreatePaymentPayload, UpdatePaymentPayload, FinanceTransaction };
 
-export interface BackendPaymentResponse {
-  data: BackendPayment[];
-}
-
-export const mapPaymentMethodToBackend = (uiMethod: string): string => {
-  switch (uiMethod) {
-    case 'Transfer Bank BCA': return 'bca_transfer';
-    case 'Transfer Bank Mandiri': return 'mandiri_transfer';
-    case 'Transfer Bank BSI': return 'bsi_transfer';
-    case 'Tunai': return 'cash';
-    case 'QRIS': return 'edc_qris';
-    default: return uiMethod;
+const mapPaymentType = (
+  paymentType: 'down_payment' | 'full_payment'
+): FinanceTransaction['type'] => {
+  switch (paymentType) {
+    case 'down_payment':
+      return 'Pemasukan (DP)';
+    case 'full_payment':
+      return 'Pemasukan (Pelunasan)';
+    default:
+      return 'Pemasukan (DP)';
   }
+};
+
+const mapPaymentCategory = (
+  paymentType: 'down_payment' | 'full_payment'
+): string => {
+  switch (paymentType) {
+    case 'down_payment':
+      return 'Pendaftaran Umrah';
+    case 'full_payment':
+      return 'Pelunasan Umrah';
+    default:
+      return 'Pembayaran Umrah';
+  }
+};
+
+export const mapPaymentToTransaction = (
+  payment: Payment
+): FinanceTransaction => {
+  const registration = payment.registration;
+
+  const pilgrimName =
+    registration?.full_name ||
+    payment.registration_id;
+
+  const amount = Number(payment.amount);
+
+  return {
+    id: payment.id,
+    pilgrimId:
+      payment.registration?.pilgrim_id ??
+      payment.registration_id,
+    pilgrimName,
+    type: mapPaymentType(payment.payment_type),
+    category: mapPaymentCategory(payment.payment_type),
+    amount,
+    paymentMethod: mapPaymentMethodToUI(payment.payment_method),
+    date: payment.payment_date,
+    status: 'Berhasil',
+    notes: payment.notes ?? undefined,
+    referenceNo: payment.reference_number ?? undefined,
+  };
 };
 
 export const financeService = {
   getPayments: async (): Promise<FinanceTransaction[]> => {
-    // 1. Fetch data from backend
-    const response = await apiClient<BackendPaymentResponse>('/payments');
-    
-    // Check if the backend returns data array directly or wrapped in data property
-    const payments = Array.isArray(response.data) ? response.data : (Array.isArray(response) ? response : []);
+    const response = await apiClient<any>('/payments');
 
-    // 2. Map data to existing FinanceTransaction structure
-    return payments.map((payment: BackendPayment): FinanceTransaction => {
-      let typeStr: FinanceTransaction['type'] = 'Pemasukan Lain';
-      if (payment.payment_type === 'down_payment') {
-        typeStr = 'Pemasukan (DP)';
-      } else if (payment.payment_type === 'full_payment') {
-        typeStr = 'Pemasukan (Pelunasan)';
-      }
+    const payload = response?.data ?? response;
 
-      let statusStr: FinanceTransaction['status'] = 'Berhasil';
-      if (payment.status) {
-         if (payment.status.toLowerCase() === 'pending') statusStr = 'Pending';
-         else if (payment.status.toLowerCase() === 'cancelled' || payment.status.toLowerCase() === 'batal' || payment.status.toLowerCase() === 'failed') statusStr = 'Batal';
-      }
+    const payments: Payment[] = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.data)
+        ? payload.data
+        : [];
 
-      return {
-        id: String(payment.id),
-        pilgrimId: String(payment.registration_id),
-        pilgrimName: payment.registration?.full_name || 'Tanpa Nama',
-        type: typeStr,
-        category: 'Pembayaran Jamaah', // Fallback as it's not provided by backend payments
-        amount: Number(payment.amount),
-        paymentMethod: payment.payment_method || '-',
-        date: payment.payment_date,
-        status: statusStr,
-        notes: payment.notes || '',
-      };
-    });
+    return payments.map(mapPaymentToTransaction);
   },
-  createPayment: async (registrationId: string | number, payload: { amount: number; payment_type: 'down_payment' | 'full_payment' | string; payment_method: string; payment_date: string; notes?: string; }): Promise<FinanceTransaction> => {
+
+  getRegistrationPayments: async (
+    registrationId: string
+  ): Promise<FinanceTransaction[]> => {
+    const response = await apiClient<any>(
+      `/registrations/${registrationId}/payments`
+    );
+
+    const payload = response?.data ?? response;
+
+    const payments: Payment[] = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.data)
+        ? payload.data
+        : [];
+
+    return payments.map(mapPaymentToTransaction);
+  },
+
+  createPayment: async (
+    registrationId: string,
+    payload: CreatePaymentPayload
+  ): Promise<FinanceTransaction> => {
     const backendPayload = {
       ...payload,
-      payment_method: mapPaymentMethodToBackend(payload.payment_method)
+      payment_method: mapPaymentMethodToBackend(payload.payment_method),
     };
-    const response = await apiClient<BackendPayment>(`/registrations/${registrationId}/payments`, {
-      method: 'POST',
-      body: JSON.stringify(backendPayload)
-    });
-    const payment: BackendPayment = (response as any).data ?? response;
-    let typeStr: FinanceTransaction['type'] = 'Pemasukan Lain';
-    if (payment.payment_type === 'down_payment') {
-      typeStr = 'Pemasukan (DP)';
-    } else if (payment.payment_type === 'full_payment') {
-      typeStr = 'Pemasukan (Pelunasan)';
-    }
-    const statusStr: FinanceTransaction['status'] = payment.status ? (payment.status.toLowerCase() === 'pending' ? 'Pending' : (payment.status.toLowerCase() === 'cancelled' || payment.status.toLowerCase() === 'batal' || payment.status.toLowerCase() === 'failed' ? 'Batal' : 'Berhasil')) : 'Berhasil';
-    return {
-      id: String(payment.id),
-      pilgrimId: String(payment.registration_id),
-      pilgrimName: payment.registration?.full_name || 'Tanpa Nama',
-      type: typeStr,
-      category: 'Pembayaran Jamaah',
-      amount: Number(payment.amount),
-      paymentMethod: payment.payment_method || '-',
-      date: payment.payment_date,
-      status: statusStr,
-      notes: payment.notes || '',
+    const response = await apiClient<any>(
+      `/registrations/${registrationId}/payments`,
+      {
+        method: 'POST',
+        body: JSON.stringify(backendPayload),
+      }
+    );
+
+    const payment: Payment =
+      response?.data?.payment ??
+      response?.data ??
+      response;
+
+    return mapPaymentToTransaction(payment);
+  },
+
+  updatePayment: async (
+    paymentId: string,
+    payload: UpdatePaymentPayload
+  ): Promise<FinanceTransaction> => {
+    const backendPayload = {
+      ...payload,
+      payment_method: payload.payment_method ? mapPaymentMethodToBackend(payload.payment_method) : undefined,
     };
+    const response = await apiClient<any>(
+      `/payments/${paymentId}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(backendPayload),
+      }
+    );
+
+    const payment: Payment =
+      response?.data?.payment ??
+      response?.data ??
+      response;
+
+    return mapPaymentToTransaction(payment);
+  },
+
+  deletePayment: async (
+    paymentId: string
+  ): Promise<void> => {
+    await apiClient(
+      `/payments/${paymentId}`,
+      {
+        method: 'DELETE',
+      }
+    );
   },
 };
-

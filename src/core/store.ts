@@ -1,5 +1,8 @@
 import { create } from 'zustand';
 import { User } from '@/types/auth';
+import { FinanceTransaction, FinanceSummary } from '@/types/finance';
+
+export type { FinanceTransaction };
 
 const getInitialAuth = () => {
   try {
@@ -15,6 +18,13 @@ const getInitialAuth = () => {
   return { isAuthenticated: false, token: null, user: null };
 };
 
+export type RegistrationEquipment = {
+  id: string;
+  equipment_name: string;
+  stock_id: string|null;
+  is_received: boolean;
+  size: string | null;
+};
 
 export type Pilgrim = {
   id: string;
@@ -49,6 +59,8 @@ export type Pilgrim = {
   photo?: boolean;
 
   // Perlengkapan
+  equipments?: RegistrationEquipment[];
+
   koperBesar?: boolean;
   koperKabin?: boolean;
   batik?: boolean;
@@ -70,20 +82,7 @@ export type Pilgrim = {
   paymentNotes?: string;
 };
 
-export type FinanceTransaction = {
-  id: string;
 
-  pilgrimId?: string;
-  pilgrimName: string;
-  type: 'Pemasukan (DP)' | 'Pemasukan (Pelunasan)' | 'Pemasukan (Lunas)' | 'Pengeluaran' | 'Pemasukan Lain';
-  category: string;
-  amount: number;
-  paymentMethod: string;
-  date: string;
-  status: 'Berhasil' | 'Pending' | 'Batal';
-  notes?: string;
-  referenceNo?: string;
-};
 
 export type Group = {
   id: string;
@@ -328,6 +327,9 @@ type StoreState = {
   expenseFetchError: string | null;
   setExpenseLoading: (isLoading: boolean) => void;
   setExpenseError: (error: string | null) => void;
+  // Finance summary state
+  financeSummary: FinanceSummary;
+  setFinanceSummary: (summary: FinanceSummary) => void;
 
   // Broadcast actions
   addBroadcast: (b: BroadcastItem) => void;
@@ -982,120 +984,7 @@ export const useStore = create<StoreState>((set) => ({
     }
   ],
 
-  financeTransactions: [
-    {
-      id: "TRX-2026-001",
-      pilgrimId: "PL-88210",
-      pilgrimName: "H. Ahmad Zaki Al-Farizi",
-      type: "Pemasukan (Lunas)",
-      category: "Pendaftaran Umrah",
-      amount: 35000000,
-      paymentMethod: "Transfer BCA",
-      date: "2026-05-10",
-      status: "Berhasil",
-      notes: "Pembayaran lunas Paket Multazam",
-      referenceNo: "BCA-9882104"
-    },
-    {
-      id: "TRX-2026-002",
-      pilgrimId: "P-1001",
-      pilgrimName: "Ahmad Abdullah",
-      type: "Pemasukan (DP)",
-      category: "Pendaftaran Umrah",
-      amount: 10000000,
-      paymentMethod: "Transfer Mandiri",
-      date: "2026-06-01",
-      status: "Berhasil",
-      notes: "DP Uang Muka Paket Yamani",
-      referenceNo: "MDR-5541029"
-    },
-    {
-      id: "TRX-2026-003",
-      pilgrimId: "P-1002",
-      pilgrimName: "Fatima Zahra",
-      type: "Pemasukan (DP)",
-      category: "Pendaftaran Umrah",
-      amount: 10000000,
-      paymentMethod: "Transfer Bank BCA",
-      date: "2026-06-01",
-      status: "Berhasil",
-      notes: "DP Uang Muka Paket Yamani",
-      referenceNo: "BCA-1029388"
-    },
-    {
-      id: "TRX-2026-004",
-      pilgrimId: "P-1003",
-      pilgrimName: "Muhammad Ali",
-      type: "Pemasukan (Lunas)",
-      category: "Pendaftaran Umrah",
-      amount: 32000000,
-      paymentMethod: "Transfer Mandiri",
-      date: "2026-06-05",
-      status: "Berhasil",
-      notes: "Pembayaran lunas Paket Raudhah",
-      referenceNo: "MDR-8812003"
-    },
-    {
-      id: "TRX-2026-005",
-      pilgrimName: "PT Sinar Busana - Vendor Konveksi",
-      type: "Pengeluaran",
-      category: "Perlengkapan",
-      amount: 12500000,
-      paymentMethod: "Transfer BCA",
-      date: "2026-07-15",
-      status: "Berhasil",
-      notes: "Pengadaan 50 unit Koper Besar, Batik Seragam & Ihram Kloter 4",
-      referenceNo: "EXP-2026-012"
-    },
-    {
-      id: "TRX-2026-006",
-      pilgrimName: "Saudia Airlines - Tiket Group",
-      type: "Pengeluaran",
-      category: "Akomodasi & Tiket",
-      amount: 45000000,
-      paymentMethod: "Transfer Mandiri",
-      date: "2026-07-18",
-      status: "Berhasil",
-      notes: "DP Blocking Seats Saudia Airlines CGK-JED PP (30 Pax)",
-      referenceNo: "EXP-2026-015"
-    },
-    {
-      id: "TRX-2026-007",
-      pilgrimName: "Swissôtel Al Maqam Makkah",
-      type: "Pengeluaran",
-      category: "Akomodasi & Tiket",
-      amount: 28000000,
-      paymentMethod: "Transfer BSI",
-      date: "2026-07-20",
-      status: "Berhasil",
-      notes: "Pelunasan DP Hotel Makkah Bintang 5 (10 Kamar Quad)",
-      referenceNo: "EXP-2026-019"
-    },
-    {
-      id: "TRX-2026-008",
-      pilgrimName: "Ust. Ibrahim Al-Madani",
-      type: "Pengeluaran",
-      category: "Operasional",
-      amount: 6500000,
-      paymentMethod: "Tunai",
-      date: "2026-07-22",
-      status: "Berhasil",
-      notes: "Honor & Bisyarah Muthawwif Lokal Kloter 4 Madinah-Makkah",
-      referenceNo: "EXP-2026-022"
-    },
-    {
-      id: "TRX-2026-009",
-      pilgrimName: "SAPTCO Bus Transport KSA",
-      type: "Pengeluaran",
-      category: "Operasional",
-      amount: 9800000,
-      paymentMethod: "Transfer BCA",
-      date: "2026-07-25",
-      status: "Berhasil",
-      notes: "Sewa 1 Unit Bus VIP SAPTCO Ziyarah Makkah & Madinah",
-      referenceNo: "EXP-2026-025"
-    }
-  ],
+  financeTransactions: [],
 
   packages: [],
 
@@ -1118,40 +1007,16 @@ export const useStore = create<StoreState>((set) => ({
       hotelMadinah: p.hotelMadinah || 'Anwar Al Madinah Movenpick',
     };
 
-    let newTxs = [...state.financeTransactions];
-    // If pilgrim is registered with initial payment, auto-generate exactly ONE Finance Transaction
-    if (enrichedPilgrim.paidAmount && enrichedPilgrim.paidAmount > 0 && enrichedPilgrim.paymentOption !== 'Belum Bayar') {
-      const existingTx = newTxs.find(t => (t.pilgrimId && t.pilgrimId === enrichedPilgrim.id) || (t.referenceNo === `REG-${enrichedPilgrim.id}`));
-      if (!existingTx) {
-        const autoTx: FinanceTransaction = {
-          id: `TRX-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-          pilgrimId: enrichedPilgrim.id,
-          pilgrimName: enrichedPilgrim.name,
-          type: enrichedPilgrim.paymentOption === 'Bayar Lunas' ? 'Pemasukan (Lunas)' : 'Pemasukan (DP)',
-          category: 'Pendaftaran Umrah',
-          amount: Number(enrichedPilgrim.paidAmount) || 0,
-          paymentMethod: enrichedPilgrim.paymentMethod || 'Transfer BCA',
-          date: enrichedPilgrim.paymentDate || new Date().toISOString().split('T')[0],
-          status: 'Berhasil',
-          notes: enrichedPilgrim.paymentNotes || (enrichedPilgrim.paymentOption === 'Bayar Lunas' ? `Pembayaran Lunas Pendaftaran - ${enrichedPilgrim.name}` : `DP Pendaftaran Umrah - ${enrichedPilgrim.name}`),
-          referenceNo: `REG-${enrichedPilgrim.id}`
-        };
-        newTxs = [autoTx, ...newTxs];
-      }
-    }
-
     const newPilgrims = [enrichedPilgrim, ...state.pilgrims];
-    const syncedPilgrims = syncPilgrimPaymentsWithTxs(newPilgrims, newTxs);
 
     // Sync group pilgrim counts
     const updatedGroups = state.groups.map(g => {
-      const count = syncedPilgrims.filter(x => x.group === g.name || x.group === g.kloter).length;
+      const count = newPilgrims.filter(x => x.group === g.name || x.group === g.kloter).length;
       return count > 0 ? { ...g, pilgrims: count } : g;
     });
 
     return {
-      pilgrims: syncedPilgrims,
-      financeTransactions: newTxs,
+      pilgrims: newPilgrims,
       groups: updatedGroups
     };
   }),
@@ -1180,36 +1045,6 @@ export const useStore = create<StoreState>((set) => ({
           ? { ...t, pilgrimName: updates.name! }
           : t
       );
-    }
-
-    // If paid amount changed manually on pilgrim
-    if (updates.paidAmount !== undefined && updates.paidAmount !== prevPilgrim.paidAmount) {
-      const pilgrimTxIndex = updatedTxs.findIndex(t => t.pilgrimId === id || t.referenceNo === `REG-${id}`);
-      if (pilgrimTxIndex >= 0) {
-        updatedTxs[pilgrimTxIndex] = {
-          ...updatedTxs[pilgrimTxIndex],
-          amount: Number(updates.paidAmount) || 0,
-          type: updates.paymentOption === 'Bayar Lunas' ? 'Pemasukan (Lunas)' : 'Pemasukan (DP)',
-          paymentMethod: updates.paymentMethod || updatedTxs[pilgrimTxIndex].paymentMethod,
-          date: updates.paymentDate || updatedTxs[pilgrimTxIndex].date,
-          status: 'Berhasil'
-        };
-      } else if (Number(updates.paidAmount) > 0) {
-        const autoTx: FinanceTransaction = {
-          id: `TRX-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-          pilgrimId: id,
-          pilgrimName: updatedPilgrim.name,
-          type: updatedPilgrim.paymentOption === 'Bayar Lunas' ? 'Pemasukan (Lunas)' : 'Pemasukan (DP)',
-          category: 'Pendaftaran Umrah',
-          amount: Number(updates.paidAmount) || 0,
-          paymentMethod: updatedPilgrim.paymentMethod || 'Transfer BCA',
-          date: updatedPilgrim.paymentDate || new Date().toISOString().split('T')[0],
-          status: 'Berhasil',
-          notes: updatedPilgrim.paymentNotes || `Penyesuaian pembayaran ${updatedPilgrim.name}`,
-          referenceNo: `REG-${id}`
-        };
-        updatedTxs = [autoTx, ...updatedTxs];
-      }
     }
 
     // Sync room occupants if name changed

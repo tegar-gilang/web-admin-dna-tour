@@ -1,18 +1,24 @@
 import React from 'react';
+import { BackendPaymentMethod } from '@/types/finance';
 
-export const PaymentMethodOptions = () => (
+interface PaymentMethodOptionsProps {
+  includePlaceholder?: boolean;
+}
+
+export const PaymentMethodOptions: React.FC<PaymentMethodOptionsProps> = ({ includePlaceholder = true }) => (
   <>
-    <option value="" className="text-gray-400 font-normal">Pilih Metode Pembayaran</option>
+    {includePlaceholder && <option value="" className="text-gray-400 font-normal">Pilih Metode Pembayaran</option>}
     <optgroup label="Metode Non-Bank" className="text-gray-900 font-normal">
-      <option value="Tunai">Tunai</option>
-      <option value="QRIS">QRIS</option>
+      <option value="cash">Tunai</option>
+      <option value="edc_qris">EDC / QRIS</option>
     </optgroup>
     <optgroup label="Bank Syariah" className="text-gray-900 font-normal">
-      <option value="Transfer Bank BSI">Transfer Bank BSI (Bank Syariah Indonesia)</option>
+      <option value="bsi_transfer">Transfer Bank BSI (Bank Syariah Indonesia)</option>
     </optgroup>
     <optgroup label="Bank Nasional & Swasta Utama" className="text-gray-900 font-normal">
-      <option value="Transfer Bank BCA">Transfer Bank BCA</option>
-      <option value="Transfer Bank Mandiri">Transfer Bank Mandiri</option>
+      <option value="bca_transfer">Transfer Bank BCA</option>
+      <option value="mandiri_transfer">Transfer Bank Mandiri</option>
     </optgroup>
   </>
 );
+
