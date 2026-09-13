@@ -49,6 +49,7 @@ export default function Dashboard() {
     rooms, 
     staffStocks, 
     financeTransactions,
+    financeExpenses,
     schedules 
   } = useStore();
 

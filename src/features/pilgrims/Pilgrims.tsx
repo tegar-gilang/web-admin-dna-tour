@@ -37,7 +37,8 @@ export default function Pilgrims() {
     emergencies,
     rooms,
     staffStocks,
-    financeTransactions
+    financeTransactions,
+    financeExpenses
   } = useStore();
 
   const [searchTerm, setSearchTerm] = useState("");
