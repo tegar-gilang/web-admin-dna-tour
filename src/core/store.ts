@@ -28,6 +28,7 @@ export type RegistrationEquipment = {
 
 export type Pilgrim = {
   id: string;
+  backendId?: string;
   pilgrimId?: string;
   formId?: string;
   name: string;
