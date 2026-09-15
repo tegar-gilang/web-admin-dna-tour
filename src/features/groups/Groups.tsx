@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from '@/lib/toast';
 import { ConfirmDeleteDialog } from '@/components/ui/ConfirmDeleteDialog';
@@ -17,6 +17,7 @@ import { Checkbox } from '@/components/ui/Checkbox';
 import { useStore, Group } from '@/core/store';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/Dialog';
 import { exportToExcel } from '@/lib/export';
+import { kloterService } from '../../core/services/kloterService';
 
 export default function Groups() {
 
@@ -27,7 +28,8 @@ export default function Groups() {
 
   const navigate = useNavigate();
   const { 
-    groups, 
+    groups,
+    setGroups,
     addGroup, 
     updateGroup, 
     deleteGroups, 
@@ -48,6 +50,9 @@ export default function Groups() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
+  const [isLoadingKloters, setIsLoadingKloters] = useState(false);
+  const [kloterError, setKloterError] = useState<string | null>(null);
+
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'detail' | 'edit'>('edit');
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
@@ -56,6 +61,30 @@ export default function Groups() {
   const [detailTab, setDetailTab] = useState<"info" | "jamaah" | "petugas" | "perjalanan" | "darurat">("info");
   const [pilgrimSearchTerm, setPilgrimSearchTerm] = useState("");
   const [formData, setFormData] = useState<Partial<Group>>({});
+
+  useEffect(() => {
+    const loadKloters = async () => {
+      try {
+        setIsLoadingKloters(true);
+        setKloterError(null);
+
+        const data = await kloterService.getKloters();
+
+        setGroups(data);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Gagal mengambil data kloter.';
+
+        setKloterError(message);
+      } finally {
+        setIsLoadingKloters(false);
+      }
+    };
+
+    loadKloters();
+  }, [setGroups]);
 
   // Stats Calculations
   const totalGroups = groups.length;
@@ -104,11 +133,40 @@ export default function Groups() {
     setIsDeleteDialogOpen(true);
   };
 
-  const confirmDelete = () => {
-    deleteGroups(Array.from(selectedIds));
+  const confirmDelete = async () => {
+  try {
+    const selectedGroups = groups.filter((group) =>
+      selectedIds.has(group.id)
+    );
+
+    for (const group of selectedGroups) {
+      if (!group.backendId) {
+        throw new Error(
+          `ID backend untuk kloter ${group.name} tidak ditemukan.`
+        );
+      }
+
+      await kloterService.deleteKloter(group.backendId);
+    }
+
+    setGroups(
+      groups.filter((group) => !selectedIds.has(group.id))
+    );
+
     setSelectedIds(new Set());
+
     toast("Data kloter berhasil dihapus.", "success");
-  };
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Gagal menghapus data kloter.";
+
+    toast(message, "error");
+  } finally {
+    setIsDeleteDialogOpen(false);
+  }
+};
 
   const openAddModal = () => {
     setEditingGroup(null);
@@ -133,29 +191,79 @@ export default function Groups() {
     setIsFormModalOpen(true);
   };
 
-  const saveGroup = () => {
-    if (!formData.name) {
+  const saveGroup = async () => {
+    if (!formData.name?.trim()) {
       toast("Nama kloter wajib diisi.", "error");
       return;
     }
 
-    if (editingGroup) {
-      updateGroup(editingGroup.id, formData);
-      toast("Data kloter berhasil diperbarui.", "success");
-    } else {
-      addGroup({
-        id: formData.id || `G-${Math.floor(100 + Math.random() * 900)}`,
-        formId: formData.formId,
-        name: formData.name,
-        kloter: formData.kloter || 'KNO-01',
-        pilgrims: Number(formData.pilgrims) || 0,
-        tourLeader: formData.tourLeader || 'Unassigned',
-        mutawif: formData.mutawif || 'Unassigned',
-        status: formData.status || 'Active',
-      });
-      toast("Kloter baru berhasil dibuat.", "success");
+    try {
+      if (editingGroup) {
+        if (!editingGroup.backendId) {
+          toast("ID backend kloter tidak ditemukan.", "error");
+          return;
+        }
+
+        const updatedGroup = await kloterService.updateKloter(
+          editingGroup.backendId,
+          {
+            name: formData.name,
+            code: formData.formId || null,
+            flight_code: formData.kloter || null,
+            status:
+              formData.status === 'Active'
+                ? 'active'
+                : formData.status === 'Archived'
+                ? 'archived'
+                : 'draft',
+            tour_leader: formData.tourLeader || null,
+            mutawif_local: formData.mutawif || null,
+          }
+        );
+
+        setGroups(
+          groups.map((group) =>
+            group.backendId === updatedGroup.backendId
+              ? updatedGroup
+              : group
+          )
+        );
+
+        toast("Data kloter berhasil diperbarui.", "success");
+      } else {
+        const newGroup = await kloterService.createKloter({
+          name: formData.name,
+          code: formData.formId || null,
+          flight_code: formData.kloter || null,
+          status:
+            formData.status === 'Active'
+              ? 'active'
+              : formData.status === 'Archived'
+              ? 'archived'
+              : 'draft',
+          tour_leader: formData.tourLeader || null,
+          mutawif_local: formData.mutawif || null,
+          package_id: null,
+          departure_date: null,
+          return_date: null,
+          hotel_makkah_id: null,
+          hotel_madinah_id: null,
+        });
+
+        setGroups([newGroup, ...groups]);
+
+        toast("Kloter baru berhasil dibuat.", "success");
+      }
+
+      setIsFormModalOpen(false);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Gagal menyimpan data kloter.";
+
+      toast(message, "error");
     }
-    setIsFormModalOpen(false);
   };
 
   const handleExportExcel = () => {
@@ -465,6 +573,18 @@ export default function Groups() {
                 <option value="archived">Diarsipkan</option>
               </select>
             </div>
+          </div>
+        )}
+
+        {isLoadingKloters && (
+          <div className="px-4 py-3 text-sm text-gray-500">
+            Memuat data kloter...
+          </div>
+        )}
+
+        {kloterError && (
+          <div className="px-4 py-3 text-sm text-red-600">
+            {kloterError}
           </div>
         )}
 

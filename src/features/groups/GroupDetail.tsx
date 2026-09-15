@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect,useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { 
   ArrowLeft, Users, UserPlus, BedDouble, MapPin, Briefcase, 
@@ -17,6 +17,8 @@ import { useStore, Group, Pilgrim, RoomItem, RoomCategory, RoomOccupant } from '
 import { exportToExcel } from '@/lib/export';
 import { exportRoomListToPdf } from '@/lib/exportPdf';
 import { toast } from '@/lib/toast';
+import { jamaahService } from '../../core/services/jamaahService';
+import { kloterService } from '../../core/services/kloterService';
 
 export default function GroupDetail() {
 
@@ -29,9 +31,11 @@ export default function GroupDetail() {
   const navigate = useNavigate();
 
   const { 
-    groups, 
+    groups,
+    setGroups,
     updateGroup, 
-    pilgrims, 
+    pilgrims,
+    setPilgrims,
     updatePilgrim, 
     tourLeaders, 
     mutawifs, 
@@ -47,8 +51,10 @@ export default function GroupDetail() {
   } = useStore();
 
   // Find the group by ID or by name/kloter
-  const group = groups.find(g => g.id === groupId || g.name === groupId || g.kloter === groupId);
+  const group = groups.find(g => g.id === groupId || g.name === groupId || g.kloter === groupId || g.backendId === groupId);
 
+  const [isLoadingGroup, setIsLoadingGroup] = useState(true);
+  const [genderFilter, setGenderFilter] = useState<'all' | 'L' | 'P' | 'lansia'>('all');
   const [activeTab, setActiveTab] = useState<'ringkasan' | 'jamaah' | 'kamar' | 'petugas' | 'jadwal' | 'darurat'>('ringkasan');
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddPilgrimModalOpen, setIsAddPilgrimModalOpen] = useState(false);
@@ -82,14 +88,73 @@ export default function GroupDetail() {
   const [editingRoomNoId, setEditingRoomNoId] = useState<string>('');
   const [editingRoomNoVal, setEditingRoomNoVal] = useState<string>('');
 
+  useEffect(() => {
+    const loadJamaahs = async () => {
+      try {
+        const data = await jamaahService.getJamaahs();
+        setPilgrims(data);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Gagal mengambil data Jamaah.';
+
+        toast(message, 'error');
+      }
+    };
+
+    loadJamaahs();
+  }, [setPilgrims]);
+
+  useEffect(() => {
+    const loadKloters = async () => {
+      try {
+        setIsLoadingGroup(true);
+
+        const data = await kloterService.getKloters();
+        setGroups(data);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Gagal mengambil data kloter.';
+
+        toast(message, 'error');
+      } finally {
+        setIsLoadingGroup(false);
+      }
+    };
+
+    loadKloters();
+  }, [setGroups]);
+
+if (isLoadingGroup) {
+  return (
+    <div className="p-8 text-center space-y-4 bg-white rounded-2xl border border-gray-200">
+      <p className="text-sm text-gray-500">
+        Memuat data kloter...
+      </p>
+    </div>
+  );
+}
+
   if (!group) {
     return (
       <div className="p-8 text-center space-y-4 bg-white rounded-2xl border border-gray-200">
         <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto" />
-        <h2 className="text-xl font-bold text-gray-900">Kloter Tidak Ditemukan</h2>
-        <p className="text-sm text-gray-500">Data kloter dengan ID "{groupId}" tidak ditemukan di sistem.</p>
-        <Button onClick={() => navigate('/groups')} variant="outline" className="rounded-xl">
-          <ArrowLeft className="w-4 h-4 mr-2" /> Kembali ke Daftar Kloter
+        <h2 className="text-xl font-bold text-gray-900">
+          Kloter Tidak Ditemukan
+        </h2>
+        <p className="text-sm text-gray-500">
+          Data kloter dengan ID "{groupId}" tidak ditemukan di sistem.
+        </p>
+        <Button
+          onClick={() => navigate('/groups')}
+          variant="outline"
+          className="rounded-xl"
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Kembali ke Daftar Kloter
         </Button>
       </div>
     );
@@ -305,7 +370,6 @@ export default function GroupDetail() {
     setIsEditModalOpen(false);
     toast('Informasi kloter berhasil diperbarui!', 'success');
   };
-  const [genderFilter, setGenderFilter] = useState<'all' | 'L' | 'P' | 'lansia'>('all');
 
   const filteredGroupPilgrims = groupPilgrims.filter(p => {
     const matchSearch = 
@@ -804,9 +868,37 @@ export default function GroupDetail() {
                           variant="ghost" 
                           size="icon" 
                           className="w-8 h-8 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg cursor-pointer transition-colors"
-                          onClick={() => {
-                            updatePilgrim(p.id, { group: '' });
-                            toast(`${p.name} berhasil dikeluarkan dari kloter`, 'success');
+                          onClick={async () => {
+                            if (!p.backendId) {
+                              toast('ID backend Jamaah tidak ditemukan.', 'error');
+                              return;
+                            }
+
+                            try {
+                              await jamaahService.updateJamaah(p.backendId, {
+                                kloter_id: null,
+                              });
+
+                              setPilgrims(
+                                pilgrims.map((pilgrim) =>
+                                  pilgrim.backendId === p.backendId
+                                    ? {
+                                        ...pilgrim,
+                                        group: '',
+                                      }
+                                    : pilgrim
+                                )
+                              );
+
+                              toast(`${p.name} berhasil dikeluarkan dari kloter`, 'success');
+                            } catch (error) {
+                              const message =
+                                error instanceof Error
+                                  ? error.message
+                                  : 'Gagal mengeluarkan Jamaah dari kloter.';
+
+                              toast(message, 'error');
+                            }
                           }}
                           title="Keluarkan dari kloter"
                         >
@@ -1309,9 +1401,42 @@ export default function GroupDetail() {
                           <Button 
                             size="sm" 
                             className="bg-[#740A03] hover:bg-[#580802] text-white text-xs font-semibold h-8 px-3 rounded-lg cursor-pointer"
-                            onClick={() => {
-                              updatePilgrim(p.id, { group: group.name });
-                              toast(`${p.name} dimasukkan ke ${group.name}`, 'success');
+                            onClick={async () => {
+                              if (!p.backendId) {
+                                toast('ID backend Jamaah tidak ditemukan.', 'error');
+                                return;
+                              }
+
+                              if (!group.backendId) {
+                                toast('ID backend Kloter tidak ditemukan.', 'error');
+                                return;
+                              }
+
+                              try {
+                                await jamaahService.updateJamaah(p.backendId, {
+                                  kloter_id: group.backendId,
+                                });
+
+                                setPilgrims(
+                                  pilgrims.map((pilgrim) =>
+                                    pilgrim.backendId === p.backendId
+                                      ? {
+                                          ...pilgrim,
+                                          group: group.name,
+                                        }
+                                      : pilgrim
+                                  )
+                                );
+
+                                toast(`${p.name} dimasukkan ke ${group.name}`, 'success');
+                              } catch (error) {
+                                const message =
+                                  error instanceof Error
+                                    ? error.message
+                                    : 'Gagal memasukkan Jamaah ke kloter.';
+
+                                toast(message, 'error');
+                              }
                             }}
                           >
                             + Masukkan

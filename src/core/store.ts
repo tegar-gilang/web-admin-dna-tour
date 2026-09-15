@@ -87,6 +87,7 @@ export type Pilgrim = {
 
 export type Group = {
   id: string;
+  backendId?:string;
   formId?: string;
   name: string;
   kloter: string;
