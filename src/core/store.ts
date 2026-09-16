@@ -34,6 +34,7 @@ export type Pilgrim = {
   name: string;
   passport: string;
   group: string;
+  kloterId?: string | null;
   gender: string;
   age: number;
   phone: string;
@@ -95,6 +96,8 @@ export type Group = {
   tourLeader: string;
   mutawif: string;
   status: string;
+  hotelMakkahId?: string | null;
+  hotelMadinahId?: string | null;
 };
 
 export type Family = {
@@ -175,6 +178,8 @@ export type RoomCategory = 'DOUBLE' | 'TRIPLE' | 'QUAD' | 'QUINT';
 
 export type RoomOccupant = {
   id: string;
+  backendId?: string;
+  jamaahId?: string;
 
   no: number;
   title: 'MR' | 'MRS' | 'MISS' | 'MSTR';
@@ -184,16 +189,18 @@ export type RoomOccupant = {
 
 export type RoomItem = {
   id: string;
+  backendId?: string;
 
   category: RoomCategory;
   roomLabel: string;
   roomNumber?: string;
+
   kloter: string;
   hotelLocation: 'Makkah' | 'Madinah';
   hotelName: string;
+
   occupants: RoomOccupant[];
 };
-
 export type StaffStockItem = {
   id: string;
 
@@ -302,6 +309,7 @@ type StoreState = {
   addRoom: (room: RoomItem) => void;
   updateRoom: (id: string, updates: Partial<RoomItem>) => void;
   deleteRoom: (id: string) => void;
+  setRooms: (rooms: RoomItem[]) => void;
   addOccupantToRoom: (roomId: string, occupant: RoomOccupant) => void;
   removeOccupantFromRoom: (roomId: string, occupantId: string) => void;
   updateOccupantInRoom: (roomId: string, occupantId: string, updates: Partial<RoomOccupant>) => void;
@@ -1439,6 +1447,7 @@ export const useStore = create<StoreState>((set) => ({
     };
   }),
 
+  setRooms: (rooms) => set({ rooms }),
   addRoom: (room) => set((state) => ({ rooms: [room, ...state.rooms] })),
   updateRoom: (id, updates) => set((state) => ({
     rooms: state.rooms.map(r => r.id === id ? { ...r, ...updates } : r)

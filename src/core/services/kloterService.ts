@@ -90,6 +90,8 @@ function mapBackendToGroup(backend: BackendKloter): Group {
     tourLeader: backend.tour_leader || '-',
     mutawif: backend.mutawif_local || '-',
     status: mapBackendStatusToUI(backend.status),
+    hotelMakkahId: backend.hotel_makkah_id || null,
+    hotelMadinahId: backend.hotel_madinah_id || null,
   };
 }
 

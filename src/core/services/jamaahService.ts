@@ -140,6 +140,7 @@ export const mapJamaahToPilgrim = (
     emergencyContact: jamaah.emergency_contact ?? '',
 
     group: jamaah.kloter?.name ?? '',
+    kloterId: jamaah.kloter?.id ?? '',
     umrahPackage: jamaah.package?.name ?? '',
 
     tourLeader: jamaah.tour_leader ?? '',

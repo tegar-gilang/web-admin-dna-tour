@@ -50,6 +50,7 @@ import {
   DialogContent,
 } from '@/components/ui/Dialog';
 import { exportMasterWorkbookToExcel } from '@/lib/export';
+import { kloterService } from '@/core/services/kloterService';
 
 export default function Pilgrims() {
   // ==========================================
@@ -61,6 +62,7 @@ export default function Pilgrims() {
     pilgrims,
     setPilgrims,
     groups,
+    setGroups,
     tourLeaders,
     mutawifs,
     schedules,
@@ -131,6 +133,20 @@ export default function Pilgrims() {
 
     fetchJamaahs();
   }, [setPilgrims]);
+
+  useEffect(() => {
+    const fetchKloters = async () => {
+      try {
+        const data = await kloterService.getKloters();
+
+        setGroups(data);
+      } catch (error) {
+        console.error('Gagal mengambil data kloter:', error);
+      }
+    };
+
+  fetchKloters();
+}, [setGroups]);
 
   const formatIndoDate = (
     dateStr?: string,
@@ -443,6 +459,7 @@ export default function Pilgrims() {
       phone: '',
       emergencyContact: '',
       group: '',
+      kloterId: null,
       tourLeader: '',
       mutawifLocal: '',
       umrahPackage: '',
@@ -518,6 +535,16 @@ export default function Pilgrims() {
       setIsLoadingJamaah(true);
       setJamaahError(null);
 
+      const selectedGroup = groups.find(
+        (group) => group.name === formData.group
+      );
+
+      if (formData.group && !selectedGroup?.backendId) {
+        throw new Error(
+          'ID backend kloter tidak ditemukan.'
+        );
+      }
+
       const payload: Partial<JamaahPayload> = {
         login_id: formData.id.trim(),
         nik: formData.ktp.trim(),
@@ -548,7 +575,7 @@ export default function Pilgrims() {
           null,
 
         package_id: null,
-        kloter_id: null,
+        kloter_id: formData.kloterId ?? null,
 
         hotel_makkah:
           formData.hotelMakkah?.trim() ||
@@ -2417,35 +2444,26 @@ export default function Pilgrims() {
 
                     <div className="sm:col-span-8">
                       <select
-                        value={
-                          formData.group ||
-                          ''
-                        }
+                        value={formData.kloterId || ''}
                         onChange={(e) => {
-                          const selectedGroupName =
-                            e.target.value;
+                          const selectedKloterId = e.target.value;
 
-                          const foundGrp =
-                            groups.find(
-                              (g) =>
-                                g.name ===
-                                selectedGroupName
-                            );
+                          const foundGrp = groups.find(
+                            (g) => g.backendId === selectedKloterId
+                          );
 
                           setFormData({
                             ...formData,
-                            group:
-                              selectedGroupName,
+                            kloterId: selectedKloterId || null,
+                            group: foundGrp?.name || '',
                             tourLeader:
-                              foundGrp?.tourLeader ||
-                              formData.tourLeader,
+                              foundGrp?.tourLeader || formData.tourLeader,
                             mutawifLocal:
-                              foundGrp?.mutawif ||
-                              formData.mutawifLocal,
+                              foundGrp?.mutawif || formData.mutawifLocal,
                           });
                         }}
                         className={`h-12 sm:h-13 w-full rounded-2xl border border-gray-300 bg-white px-4 sm:px-5 text-base ${
-                          formData.group
+                          formData.kloterId
                             ? 'font-bold text-gray-900'
                             : 'font-normal text-gray-400'
                         } focus:outline-none focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859] cursor-pointer`}
@@ -2456,8 +2474,8 @@ export default function Pilgrims() {
 
                         {groups.map((g) => (
                           <option
-                            key={g.id}
-                            value={g.name}
+                            key={g.backendId || g.id}
+                            value={g.backendId || ''}
                           >
                             {g.name}
                           </option>

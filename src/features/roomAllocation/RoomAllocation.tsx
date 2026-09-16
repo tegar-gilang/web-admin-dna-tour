@@ -10,6 +10,9 @@ import { ConfirmDeleteButton } from '@/components/ui/ConfirmDeleteButton';
 import { toast } from '@/lib/toast';
 import { exportToExcel } from '@/lib/export';
 import { exportRoomListToPdf } from '@/lib/exportPdf';
+import { roomService } from '@/core/services/roomService';
+import { kloterService } from '@/core/services/kloterService';
+import { jamaahService } from '@/core/services/jamaahService';
 import { 
   BedDouble, Plus, Download, Trash2, Edit2, 
   Building2, Users, UserPlus, AlertCircle, X, Search, FileText,
@@ -24,10 +27,19 @@ export default function RoomAllocation() {
 // Komponen utama untuk fitur ROOMALLOCATION
 // ==========================================
 
-  const { 
-    rooms, addRoom, updateRoom, deleteRoom, 
-    addOccupantToRoom, removeOccupantFromRoom, updateOccupantInRoom,
-    groups, pilgrims 
+  const {
+    rooms,
+    setRooms,
+    addRoom,
+    updateRoom,
+    deleteRoom,
+    addOccupantToRoom,
+    removeOccupantFromRoom,
+    updateOccupantInRoom,
+    groups,
+    setGroups,
+    pilgrims,
+    setPilgrims
   } = useStore();
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -47,10 +59,57 @@ export default function RoomAllocation() {
     }
   }, [urlKloter]);
 
+  useEffect(() => {
+    const loadKloters = async () => {
+      try {
+        const data = await kloterService.getKloters();
+
+        setGroups(data);
+      } catch (error) {
+        console.error('Gagal mengambil data kloter:', error);
+      }
+    };
+
+    loadKloters();
+  }, [setGroups]);
+
+  useEffect(() => {
+    const loadJamaahs = async () => {
+      try {
+        const data = await jamaahService.getJamaahs();
+
+        setPilgrims(data);
+      } catch (error) {
+        console.error('Gagal mengambil data jamaah:', error);
+      }
+    };
+
+    loadJamaahs();
+  }, [setPilgrims]);
+
+  useEffect(() => {
+    if (urlKloter) return;
+
+    if (
+      groups.length > 0 &&
+      !groups.some(
+        g =>
+          g.name === selectedKloter ||
+          g.kloter === selectedKloter ||
+          g.id === selectedKloter
+      )
+    ) {
+      setSelectedKloter(groups[0].name);
+    }
+  }, [groups, selectedKloter, urlKloter]);
+
   const handleKloterChange = (kloterName: string) => {
     setSelectedKloter(kloterName);
     setSearchParams({ kloter: kloterName });
   };
+
+  const [isLoadingRooms, setIsLoadingRooms] = useState(false);
+  const [roomError, setRoomError] = useState<string | null>(null);
 
   const [selectedHotelLocation, setSelectedHotelLocation] = useState<'Makkah' | 'Madinah'>("Makkah");
   const [makkahHotelName, setMakkahHotelName] = useState<string>("Swissôtel Al Maqam Makkah");
@@ -72,6 +131,7 @@ export default function RoomAllocation() {
   const [isAddRoomOpen, setIsAddRoomOpen] = useState<boolean>(false);
   const [newRoomCategory, setNewRoomCategory] = useState<RoomCategory>('DOUBLE');
   const [newRoomNumber, setNewRoomNumber] = useState<string>('');
+  const [newRoomGender, setNewRoomGender] = useState<'L' | 'P'>('L');
 
   const [isAddOccupantOpen, setIsAddOccupantOpen] = useState<boolean>(false);
   const [targetRoomId, setTargetRoomId] = useState<string>('');
@@ -89,9 +149,49 @@ export default function RoomAllocation() {
   const [editingRoomNoVal, setEditingRoomNoVal] = useState<string>('');
 
   // Matched Kloter Names for seamless connection
-  const selectedGroupObj = groups.find(g => g.name === selectedKloter || g.kloter === selectedKloter || g.id === selectedKloter);
+  const selectedGroupObj = groups.find(
+    g =>
+      g.name === selectedKloter ||
+      g.kloter === selectedKloter ||
+      g.id === selectedKloter
+  );
+
+  // STEP 3B - Load Room Meet dari backend
+  useEffect(() => {
+    const loadRooms = async () => {
+      if (!selectedGroupObj?.backendId) {
+        setRoomError('ID backend Kloter tidak ditemukan.');
+        return;
+      }
+
+      try {
+        setIsLoadingRooms(true);
+        setRoomError(null);
+
+        const data = await roomService.getRooms(selectedGroupObj.backendId);
+
+        setRooms(data);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Gagal mengambil data Room Meet.';
+
+        setRoomError(message);
+      } finally {
+        setIsLoadingRooms(false);
+      }
+    };
+
+    loadRooms();
+  }, [selectedGroupObj?.backendId, setRooms]);
+
   const matchedKloterNames = useMemo(() => {
-    return new Set([selectedKloter, selectedGroupObj?.name, selectedGroupObj?.kloter].filter(Boolean) as string[]);
+    return new Set([
+      selectedKloter,
+      selectedGroupObj?.name,
+      selectedGroupObj?.kloter
+    ].filter(Boolean) as string[]);
   }, [selectedKloter, selectedGroupObj]);
 
   // Rooms in current location
@@ -181,83 +281,242 @@ export default function RoomAllocation() {
   };
 
   // Handle Add Room
-  const handleCreateRoom = () => {
-    const existingCount = kloterLocationRooms.filter(r => r.category === newRoomCategory).length;
-    const roomLabel = `${newRoomCategory} ${existingCount + 1}`;
-
-    const newRoom: RoomItem = {
-      id: `RM-${Date.now()}`,
-      category: newRoomCategory,
-      roomLabel,
-      roomNumber: newRoomNumber.trim(),
-      kloter: selectedKloter,
-      hotelLocation: selectedHotelLocation,
-      hotelName: currentHotelName,
-      occupants: []
-    };
-
-    addRoom(newRoom);
-    setIsAddRoomOpen(false);
-    setNewRoomNumber('');
-    toast(`Kamar ${roomLabel} berhasil dibuat.`, "success");
-  };
-
-  // Handle Add Occupant
-  const handleAddOccupant = () => {
-    if (!targetRoomId) return;
-
-    let title: 'MR' | 'MRS' | 'MISS' | 'MSTR' = customTitle;
-    let name = customName.trim().toUpperCase();
-    let age: number | string = customAge;
-
-    if (selectedPilgrimId) {
-      const p = pilgrims.find(item => item.id === selectedPilgrimId);
-      if (p) {
-        title = p.gender === 'Laki-laki' || p.gender === 'L' ? 'MR' : 'MRS';
-        name = p.name.toUpperCase();
-        age = p.age;
-      }
-    }
-
-    if (!name) {
-      toast("Nama penghuni wajib diisi.", "error");
+  const handleCreateRoom = async () => {
+    if (!selectedGroupObj?.backendId) {
+      toast("ID backend kloter tidak ditemukan.", "error");
       return;
     }
 
-    const nextNo = getNextSequentialNo();
-    const newOccupant: RoomOccupant = {
-      id: `OC-${Date.now()}`,
-      no: nextNo,
-      title,
-      name,
-      age: age || ''
-    };
+    const hotelId =
+      selectedHotelLocation === 'Makkah'
+        ? selectedGroupObj.hotelMakkahId
+        : selectedGroupObj.hotelMadinahId;
 
-    addOccupantToRoom(targetRoomId, newOccupant);
+    if (!hotelId) {
+      toast(
+        `Hotel ${selectedHotelLocation} untuk kloter ${selectedKloter} belum tersedia.`,
+        "error"
+      );
+      return;
+    }
+
+    try {
+      const existingCount = kloterLocationRooms.filter(
+        r => r.category === newRoomCategory
+      ).length;
+
+      const roomLabel = `${newRoomCategory} ${existingCount + 1}`;
+
+      const createdRoom = await roomService.createRoom({
+        kloter_id: selectedGroupObj.backendId,
+        hotel_id: hotelId,
+        room_number: newRoomNumber.trim() || null,
+        room_type: newRoomCategory.toLowerCase() as
+          | 'double'
+          | 'triple'
+          | 'quad'
+          | 'quint',
+        capacity:
+          newRoomCategory === 'DOUBLE'
+            ? 2
+            : newRoomCategory === 'TRIPLE'
+            ? 3
+            : newRoomCategory === 'QUAD'
+            ? 4
+            : 5,
+        gender: newRoomGender,
+        notes: null,
+      });
+
+      setRooms([
+        ...rooms,
+        createdRoom,
+      ]);
+
+      setIsAddRoomOpen(false);
+      setNewRoomNumber('');
+      setNewRoomGender('L');
+
+      toast(`Kamar ${roomLabel} berhasil dibuat.`, "success");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Gagal membuat kamar.";
+
+      toast(message, "error");
+    }
+  };
+
+  // Handle Add Occupant
+  const handleAddOccupant = async () => {
+  if (!targetRoomId) return;
+
+  let title: 'MR' | 'MRS' | 'MISS' | 'MSTR' = customTitle;
+  let name = customName.trim().toUpperCase();
+  let age: number | string = customAge;
+  let jamaahId: string | undefined;
+
+  if (selectedPilgrimId) {
+    const p = pilgrims.find(item => item.id === selectedPilgrimId);
+
+    if (p) {
+      title =
+        p.gender === 'Laki-laki' || p.gender === 'L'
+          ? 'MR'
+          : 'MRS';
+
+      name = p.name.toUpperCase();
+      age = p.age;
+      jamaahId = p.backendId;
+    }
+  }
+
+  if (!name) {
+    toast("Nama penghuni wajib diisi.", "error");
+    return;
+  }
+
+  if (selectedPilgrimId && !jamaahId) {
+    toast("ID backend jamaah tidak ditemukan.", "error");
+    return;
+  }
+
+  try {
+    await roomService.addOccupant(
+    targetRoomId,
+    {
+      jamaah_id: jamaahId,
+      title,
+      occupant_name: name,
+      age: age ? Number(age) : null,
+    }
+  );
+
+  if (!selectedGroupObj?.backendId) {
+    throw new Error("ID backend kloter tidak ditemukan.");
+  }
+
+  const latestRooms = await roomService.getRooms(
+    selectedGroupObj.backendId
+  );
+
+  setRooms(latestRooms);
+
     setIsAddOccupantOpen(false);
     setSelectedPilgrimId('');
     setCustomName('');
     setCustomAge('');
-    toast(`Penghuni ${name} berhasil ditambahkan ke kamar.`, "success");
-  };
 
+    toast(`Penghuni ${name} berhasil ditambahkan ke kamar.`, "success");
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Gagal menambahkan penghuni ke kamar.";
+
+    toast(message, "error");
+  }
+};
   // Handle Save Edit Occupant
-  const handleSaveEditOccupant = () => {
+  const handleSaveEditOccupant = async () => {
     if (!editingRoomId || !editingOccupant) return;
-    updateOccupantInRoom(editingRoomId, editingOccupant.id, editingOccupant);
-    setIsEditOccupantOpen(false);
-    setEditingOccupant(null);
-    toast("Data penghuni berhasil diperbarui.", "success");
+
+    try {
+      const room = rooms.find(
+        r => r.id === editingRoomId || r.backendId === editingRoomId
+      );
+
+      if (!room?.backendId) {
+        toast("ID backend kamar tidak ditemukan.", "error");
+        return;
+      }
+
+      if (!editingOccupant.backendId) {
+        toast("ID backend penghuni tidak ditemukan.", "error");
+        return;
+      }
+
+      await roomService.updateOccupant(
+        room.backendId,
+        editingOccupant.backendId,
+        {
+          title: editingOccupant.title,
+          occupant_name: editingOccupant.name.trim(),
+          age: editingOccupant.age
+            ? Number(editingOccupant.age)
+            : null,
+        }
+      );
+
+      if (!selectedGroupObj?.backendId) {
+        throw new Error("ID backend kloter tidak ditemukan.");
+      }
+
+      const latestRooms = await roomService.getRooms(
+        selectedGroupObj.backendId
+      );
+
+      setRooms(latestRooms);
+
+      setIsEditOccupantOpen(false);
+      setEditingOccupant(null);
+
+      toast("Data penghuni berhasil diperbarui.", "success");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Gagal memperbarui data penghuni.";
+
+      toast(message, "error");
+    }
   };
 
   // Handle Save Room Number
-  const handleSaveRoomNo = () => {
+  const handleSaveRoomNo = async () => {
     if (!editingRoomNoId) return;
-    updateRoom(editingRoomNoId, { roomNumber: editingRoomNoVal });
-    setIsEditRoomNoOpen(false);
-    toast("Nomor kamar hotel berhasil diperbarui.", "success");
-  };
 
+    try {
+      const room = rooms.find(
+        r => r.id === editingRoomNoId || r.backendId === editingRoomNoId
+      );
+
+      if (!room?.backendId) {
+        toast("ID backend kamar tidak ditemukan.", "error");
+        return;
+      }
+
+      await roomService.updateRoom(
+        room.backendId,
+        {
+          room_number: editingRoomNoVal.trim() || null,
+        }
+      );
+
+      setRooms(
+        rooms.map(r =>
+          r.backendId === room.backendId
+            ? {
+                ...r,
+                roomNumber: editingRoomNoVal.trim(),
+              }
+            : r
+        )
+      );
+
+      setIsEditRoomNoOpen(false);
+
+      toast("Nomor kamar hotel berhasil diperbarui.", "success");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Gagal memperbarui nomor kamar hotel.";
+
+      toast(message, "error");
+    }
+  };
   // Export to Excel matching the exact layout
   const handleExportExcel = () => {
     const excelRows: any[] = [];
@@ -674,6 +933,19 @@ export default function RoomAllocation() {
         </div>
       )}
 
+      {isLoadingRooms && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3 text-sm text-blue-800 font-medium">
+          Memuat data Room Meet dari backend...
+        </div>
+      )}
+
+      {roomError && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-sm text-red-800 font-medium flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          {roomError}
+        </div>
+      )}
+
       {/* Main Room Meet Table */}
       <Card className="border-gray-200/80 shadow-2xs rounded-2xl bg-white overflow-hidden print:border-none print:shadow-none print:rounded-none">
         
@@ -713,9 +985,19 @@ export default function RoomAllocation() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filteredRooms.map((room) => {
-                const occupants = room.occupants.length > 0 ? room.occupants : [
-                  { id: `empty-${room.id}`, no: 0, title: '' as any, name: '', age: '' }
-                ];
+                const occupants: RoomOccupant[] =
+                  room.occupants.length > 0
+                    ? room.occupants
+                    : [
+                        {
+                          id: `empty-${room.id}`,
+                          backendId: '',
+                          no: 0,
+                          title: 'MR',
+                          name: '',
+                          age: '',
+                        },
+                      ];
                 const rowSpan = occupants.length;
                 const maxCap = room.category === 'DOUBLE' ? 2 : room.category === 'TRIPLE' ? 3 : room.category === 'QUAD' ? 4 : 5;
                 const isFull = room.occupants.length >= maxCap;
@@ -830,16 +1112,56 @@ export default function RoomAllocation() {
                             >
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
-                            <ConfirmDeleteButton
-                              variant="ghost"
-                              iconOnly
-                              onConfirm={() => {
-                                removeOccupantFromRoom(room.id, occ.id);
-                                toast(`Penghuni ${occ.name} dikeluarkan dari kamar.`, "success");
-                              }}
-                              className="text-gray-400 hover:text-red-600 p-1.5 h-auto rounded-lg hover:bg-red-50 cursor-pointer transition-colors"
-                              title="Keluarkan dari Kamar"
-                            />
+                              <ConfirmDeleteButton
+                                variant="ghost"
+                                iconOnly
+                                onConfirm={async () => {
+                                  try {
+                                    const roomData = rooms.find(
+                                      r => r.id === room.id || r.backendId === room.id
+                                    );
+
+                                    if (!roomData?.backendId) {
+                                      toast("ID backend kamar tidak ditemukan.", "error");
+                                      return;
+                                    }
+
+                                    if (!occ.backendId) {
+                                      toast("ID backend penghuni tidak ditemukan.", "error");
+                                      return;
+                                    }
+
+                                    await roomService.removeOccupant(
+                                      roomData.backendId,
+                                      occ.backendId
+                                    );
+
+                                    if (!selectedGroupObj?.backendId) {
+                                      throw new Error("ID backend kloter tidak ditemukan.");
+                                    }
+
+                                    const latestRooms = await roomService.getRooms(
+                                      selectedGroupObj.backendId
+                                    );
+
+                                    setRooms(latestRooms);
+
+                                    toast(
+                                      `Penghuni ${occ.name} dikeluarkan dari kamar.`,
+                                      "success"
+                                    );
+                                  } catch (error) {
+                                    const message =
+                                      error instanceof Error
+                                        ? error.message
+                                        : "Gagal mengeluarkan penghuni dari kamar.";
+
+                                    toast(message, "error");
+                                  }
+                                }}
+                                className="text-gray-400 hover:text-red-600 p-1.5 h-auto rounded-lg hover:bg-red-50 cursor-pointer transition-colors"
+                                title="Keluarkan dari Kamar"
+                              />
                           </>
                         ) : (
                           <ConfirmDeleteButton
@@ -890,6 +1212,37 @@ export default function RoomAllocation() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-3">
+              <div>
+                <label className="font-semibold text-gray-700 mb-1.5 block text-xs">
+                  Gender Kamar
+                </label>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewRoomGender('L')}
+                    className={`p-3 rounded-xl border text-xs font-bold transition-all text-center cursor-pointer ${
+                      newRoomGender === 'L'
+                        ? 'bg-[#740A03] text-white border-[#740A03] shadow-2xs'
+                        : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    Laki-laki
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewRoomGender('P')}
+                    className={`p-3 rounded-xl border text-xs font-bold transition-all text-center cursor-pointer ${
+                      newRoomGender === 'P'
+                        ? 'bg-[#740A03] text-white border-[#740A03] shadow-2xs'
+                        : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    Perempuan
+                  </button>
+                </div>
+              </div>
             <div>
               <label className="font-semibold text-gray-700 mb-1.5 block text-xs">Tipe / Kategori Kamar</label>
               <div className="grid grid-cols-2 gap-2">
