@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table';
 import { Button } from '@/components/ui/Button';
@@ -7,23 +7,30 @@ import { Checkbox } from '@/components/ui/Checkbox';
 import { Dialog, DialogContent } from '@/components/ui/Dialog';
 import { ConfirmDeleteDialog } from '@/components/ui/ConfirmDeleteDialog';
 import { useStore, Mutawif } from '@/core/store';
+import { mutawifService } from '@/core/services/mutawifService';
+import { kloterService } from '@/core/services/kloterService';
 import { toast } from '@/lib/toast';
 import { exportToExcel } from '@/lib/export';
 import { 
   Search, Filter, UserPlus, Trash2, Edit2, Eye,
   Users, Briefcase, Award, X, FileSpreadsheet,
-  CheckCircle2, Clock, Calendar, User, UserCheck, Check,
-  Globe, Languages, MapPin, ShieldCheck, Sparkles, Building2
+  CheckCircle2, Clock, User, UserCheck, Check,
+  Globe, Languages, MapPin, ShieldCheck,
+  Loader2, AlertCircle, Link, Unlink, Plus
 } from 'lucide-react';
 
 export default function Mutawifs() {
 
 // ==========================================
-// FITUR: MUTAWIFS
+// FITUR: MUTAWIFS (API INTEGRATED)
 // Komponen utama untuk fitur MUTAWIFS
 // ==========================================
 
-  const { mutawifs, addMutawif, updateMutawif, deleteMutawifs, groups } = useStore();
+  const { mutawifs, setMutawifs, groups, setGroups } = useStore();
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState<'all' | 'active' | 'standby' | 'assigned' | 'unassigned'>('all');
@@ -43,6 +50,32 @@ export default function Mutawifs() {
   const [modalMode, setModalMode] = useState<'detail' | 'edit'>('edit');
   const [editingMutawif, setEditingMutawif] = useState<Mutawif | null>(null);
   const [formData, setFormData] = useState<Partial<Mutawif>>({});
+  const [selectedKloterIdToAssign, setSelectedKloterIdToAssign] = useState<string>("");
+
+  // Fetch initial data from Backend
+  const loadData = async () => {
+    setIsLoading(true);
+    setFetchError(null);
+    try {
+      const [fetchedMutawifs, fetchedKloters] = await Promise.all([
+        mutawifService.getMutawifs(),
+        kloterService.getKloters().catch(() => groups),
+      ]);
+      setMutawifs(fetchedMutawifs);
+      if (fetchedKloters && fetchedKloters.length > 0) {
+        setGroups(fetchedKloters);
+      }
+    } catch (err: any) {
+      console.error('Failed to load mutawifs:', err);
+      setFetchError(err.message || 'Gagal mengambil data Mutawif dari server.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   // Helper check assigned
   const isAssigned = (m: Mutawif) => Boolean(m.group && m.group !== 'Unassigned' && m.group !== 'Belum Ditugaskan' && m.group !== '-');
@@ -50,7 +83,7 @@ export default function Mutawifs() {
   // Summary Metrics calculations
   const totalMutawifs = mutawifs.length;
   const activeCount = mutawifs.filter(m => m.status === 'Active' || m.status === 'Aktif').length;
-  const standbyCount = mutawifs.filter(m => m.status === 'Standby' || m.status === 'Siaga' || m.status === 'Resting' || m.status === 'Istirahat').length;
+  const standbyCount = mutawifs.filter(m => m.status === 'Standby' || m.status === 'Siaga').length;
   const assignedCount = mutawifs.filter(m => isAssigned(m)).length;
   const unassignedCount = totalMutawifs - assignedCount;
   const activePercent = totalMutawifs > 0 ? Math.round((activeCount / totalMutawifs) * 100) : 0;
@@ -71,7 +104,7 @@ export default function Mutawifs() {
     return mutawifs.filter(mutawif => {
       // Tab filter
       if (activeTab === 'active' && mutawif.status !== 'Active' && mutawif.status !== 'Aktif') return false;
-      if (activeTab === 'standby' && mutawif.status !== 'Standby' && mutawif.status !== 'Siaga' && mutawif.status !== 'Resting' && mutawif.status !== 'Istirahat') return false;
+      if (activeTab === 'standby' && mutawif.status !== 'Standby' && mutawif.status !== 'Siaga') return false;
       if (activeTab === 'assigned' && !isAssigned(mutawif)) return false;
       if (activeTab === 'unassigned' && isAssigned(mutawif)) return false;
 
@@ -87,7 +120,7 @@ export default function Mutawifs() {
       }
 
       // Group specific filter
-      if (filterGroup && mutawif.group !== filterGroup) {
+      if (filterGroup && !mutawif.group.toLowerCase().includes(filterGroup.toLowerCase())) {
         return false;
       }
 
@@ -95,6 +128,7 @@ export default function Mutawifs() {
       const matchSearch = 
         mutawif.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
         mutawif.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (mutawif.code && mutawif.code.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (mutawif.language && mutawif.language.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (mutawif.group && mutawif.group.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (mutawif.experience && mutawif.experience.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -114,7 +148,7 @@ export default function Mutawifs() {
     if (selectedIds.size === filteredMutawifs.length && filteredMutawifs.length > 0) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(filteredMutawifs.map(m => m.id)));
+      setSelectedIds(new Set(filteredMutawifs.map(m => m.backendId || m.id)));
     }
   };
 
@@ -129,25 +163,50 @@ export default function Mutawifs() {
     setIsDeleteDialogOpen(true);
   };
 
-  const confirmDelete = () => {
-    deleteMutawifs(Array.from(selectedIds));
+  const confirmDelete = async () => {
+    const mutawifsToDelete = mutawifs.filter(m => selectedIds.has(m.id) || (m.backendId && selectedIds.has(m.backendId)));
+    setIsSubmitting(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const m of mutawifsToDelete) {
+      const targetId = m.backendId || m.id;
+      try {
+        await mutawifService.deleteMutawif(targetId);
+        successCount++;
+      } catch (err) {
+        console.error(`Gagal menghapus Mutawif ${m.name}:`, err);
+        failCount++;
+      }
+    }
+
+    setIsSubmitting(false);
     setSelectedIds(new Set());
     setIsDeleteDialogOpen(false);
-    toast(`${selectedIds.size} data muthawwif berhasil dihapus.`, "success");
+
+    if (successCount > 0) {
+      toast(`${successCount} data muthawwif berhasil dihapus.`, "success");
+      loadData();
+    }
+    if (failCount > 0) {
+      toast(`${failCount} data muthawwif gagal dihapus.`, "error");
+    }
   };
 
   // Modal actions
   const openAddModal = () => {
-    const newId = `M-${Math.floor(100 + Math.random() * 900)}`;
+    const newCode = `MW-${Math.floor(100 + Math.random() * 900)}`;
     setEditingMutawif(null);
     setFormData({
-      id: newId,
+      code: newCode,
+      id: newCode,
       name: '',
       status: 'Active',
       language: 'Arab, Indonesia, Inggris',
-      experience: '7 Tahun di Haramain',
-      group: groups.length > 0 ? groups[0].name : 'Belum Ditugaskan'
+      experience: '5 Tahun di Haramain',
+      group: 'Belum Ditugaskan'
     });
+    setSelectedKloterIdToAssign("");
     setModalMode('edit');
     setIsModalOpen(true);
   };
@@ -155,57 +214,119 @@ export default function Mutawifs() {
   const openEditModal = (mutawif: Mutawif) => {
     setEditingMutawif(mutawif);
     setFormData({ ...mutawif });
+    setSelectedKloterIdToAssign("");
     setModalMode('edit');
     setIsModalOpen(true);
   };
 
-  const openDetailModal = (mutawif: Mutawif) => {
+  const openDetailModal = async (mutawif: Mutawif) => {
     setEditingMutawif(mutawif);
     setFormData(mutawif);
     setModalMode('detail');
     setIsModalOpen(true);
+
+    if (mutawif.backendId) {
+      try {
+        const detail = await mutawifService.getMutawifById(mutawif.backendId);
+        setEditingMutawif(detail);
+        setFormData(detail);
+      } catch (err) {
+        console.error('Failed to load mutawif detail:', err);
+      }
+    }
   };
 
-  const saveMutawif = () => {
+  const saveMutawif = async () => {
     if (!formData.name || !formData.name.trim()) {
       toast("Nama Muthawwif wajib diisi.", "error");
       return;
     }
-
-    if (editingMutawif) {
-      updateMutawif(editingMutawif.id, {
-        name: formData.name.trim(),
-        language: formData.language?.trim() || 'Arab, Indonesia',
-        group: formData.group || 'Belum Ditugaskan',
-        experience: formData.experience?.trim() || '1 Tahun',
-        status: formData.status || 'Active',
-      });
-      toast(`Data Muthawwif ${formData.name} berhasil diperbarui.`, "success");
-    } else {
-      const newId = formData.id || `M-${Math.floor(100 + Math.random() * 900)}`;
-      addMutawif({
-        id: newId,
-        name: formData.name.trim(),
-        language: formData.language?.trim() || 'Arab, Indonesia',
-        group: formData.group || 'Belum Ditugaskan',
-        experience: formData.experience?.trim() || '1 Tahun',
-        status: formData.status || 'Active',
-      });
-      toast(`Muthawwif ${formData.name} berhasil ditambahkan.`, "success");
+    if (!formData.code || !formData.code.trim()) {
+      toast("Kode Muthawwif wajib diisi.", "error");
+      return;
     }
-    setIsModalOpen(false);
+
+    const payload = {
+      code: formData.code.trim(),
+      name: formData.name.trim(),
+      language: formData.language?.trim() || 'Arab, Indonesia',
+      experience: formData.experience?.trim() || '1 Tahun',
+      status: (formData.status === 'Active' || formData.status === 'active' ? 'active' : 'standby') as 'active' | 'standby',
+    };
+
+    setIsSubmitting(true);
+    try {
+      if (editingMutawif && editingMutawif.backendId) {
+        const updated = await mutawifService.updateMutawif(editingMutawif.backendId, payload);
+        toast(`Data Muthawwif ${updated.name} berhasil diperbarui.`, "success");
+      } else {
+        const created = await mutawifService.createMutawif(payload);
+        toast(`Muthawwif ${created.name} berhasil ditambahkan.`, "success");
+      }
+      setIsModalOpen(false);
+      loadData();
+    } catch (err: any) {
+      console.error('Failed to save mutawif:', err);
+      toast(err.message || 'Gagal menyimpan data Muthawwif.', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Handlers for Kloter Assignment via Backend API
+  const handleAssignKloter = async (mutawifBackendId: string, kloterBackendId: string) => {
+    if (!kloterBackendId) {
+      toast("Pilih Kloter yang akan ditugaskan.", "error");
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await mutawifService.assignMutawifToKloter(mutawifBackendId, kloterBackendId);
+      toast("Berhasil menugaskan Muthawwif ke Kloter.", "success");
+      setSelectedKloterIdToAssign("");
+      loadData();
+      if (editingMutawif && editingMutawif.backendId === mutawifBackendId) {
+        const updatedDetail = await mutawifService.getMutawifById(mutawifBackendId);
+        setEditingMutawif(updatedDetail);
+        setFormData(updatedDetail);
+      }
+    } catch (err: any) {
+      console.error('Failed to assign kloter:', err);
+      toast(err.message || 'Gagal menugaskan Kloter ke Muthawwif.', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleUnassignKloter = async (mutawifBackendId: string, kloterBackendId: string) => {
+    setIsSubmitting(true);
+    try {
+      await mutawifService.unassignMutawifFromKloter(mutawifBackendId, kloterBackendId);
+      toast("Berhasil melepas penugasan Kloter.", "success");
+      loadData();
+      if (editingMutawif && editingMutawif.backendId === mutawifBackendId) {
+        const updatedDetail = await mutawifService.getMutawifById(mutawifBackendId);
+        setEditingMutawif(updatedDetail);
+        setFormData(updatedDetail);
+      }
+    } catch (err: any) {
+      console.error('Failed to unassign kloter:', err);
+      toast(err.message || 'Gagal melepas Kloter.', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Export to Excel
   const handleExportExcel = () => {
     const exportData = filteredMutawifs.map((m, idx) => ({
       'No.': idx + 1,
-      'ID Muthawwif': m.id,
+      'ID Muthawwif': m.code || m.id,
       'Nama Lengkap': m.name,
       'Penguasaan Bahasa': m.language || 'Arab, Indonesia',
       'Kloter Penugasan': m.group || 'Belum Ditugaskan',
       'Pengalaman / Jam Terbang': m.experience || '-',
-      'Status Penugasan': m.status === 'Active' || m.status === 'Aktif' ? 'Aktif Bertugas (KSA)' : m.status === 'Standby' || m.status === 'Siaga' ? 'Siaga (Standby)' : m.status,
+      'Status Penugasan': m.status === 'Active' || m.status === 'Aktif' ? 'Aktif Bertugas (KSA)' : 'Siaga (Standby)',
     }));
     exportToExcel(exportData, 'Data_Muthawwif_DNA_Tour', 'Laporan Data Muthawwif & Pembimbing Ibadah - DNA Tour');
     toast("Data Muthawwif berhasil diexport ke Excel.", "success");
@@ -217,6 +338,19 @@ export default function Mutawifs() {
 
   return (
     <div className="space-y-6 pb-12 animate-fade-in">
+      {/* Error banner */}
+      {fetchError && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-2xl flex items-center justify-between text-xs font-semibold">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+            <span>{fetchError}</span>
+          </div>
+          <Button variant="outline" size="sm" onClick={loadData} className="h-7 text-xs border-red-300 hover:bg-red-100">
+            Coba Lagi
+          </Button>
+        </div>
+      )}
+
       {/* Header Banner Container - Identical to Registration */}
       <div className="bg-white rounded-2xl border border-gray-200/80 p-5 shadow-2xs">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -350,7 +484,7 @@ export default function Mutawifs() {
               <div className="space-y-1">
                 <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">KLOTER DIBIMBING</p>
                 <p className="text-2xl sm:text-[26px] font-bold tracking-tight text-blue-900">
-                  {assignedCount} Kloter
+                  {assignedCount} Muthawwif
                 </p>
               </div>
               <div className="w-10 h-10 rounded-full bg-[#edf5ff] text-[#2563eb] flex items-center justify-center shrink-0 shadow-2xs">
@@ -623,144 +757,156 @@ export default function Mutawifs() {
               </TableRow>
             </TableHeader>
             <TableBody key={activeTab} className="animate-fade-in">
-              {paginatedData.map((mutawif) => {
-                const isSelected = selectedIds.has(mutawif.id);
-                const assigned = isAssigned(mutawif);
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="h-48 text-center">
+                    <div className="flex flex-col items-center justify-center text-gray-500">
+                      <Loader2 className="w-6 h-6 animate-spin text-emerald-600 mb-2" />
+                      <p className="text-xs font-semibold text-gray-700">Memuat data Muthawwif dari server...</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                paginatedData.map((mutawif) => {
+                  const targetSelectId = mutawif.backendId || mutawif.id;
+                  const isSelected = selectedIds.has(targetSelectId) || selectedIds.has(mutawif.id);
+                  const assigned = isAssigned(mutawif);
 
-                return (
-                  <TableRow 
-                    key={mutawif.id} 
-                    className={`${isSelected ? "bg-emerald-50/40" : ""} hover:bg-gray-50/80 transition-colors group cursor-pointer`}
-                    onClick={(e) => {
-                      if ((e.target as HTMLElement).closest('input[type="checkbox"], button')) return;
-                      openDetailModal(mutawif);
-                    }}
-                  >
-                    <TableCell className="pl-4 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                      <Checkbox 
-                        checked={isSelected}
-                        onCheckedChange={() => toggleSelect(mutawif.id)}
-                        aria-label={`Pilih ${mutawif.name}`}
-                      />
-                    </TableCell>
+                  return (
+                    <TableRow 
+                      key={mutawif.backendId || mutawif.id} 
+                      className={`${isSelected ? "bg-emerald-50/40" : ""} hover:bg-gray-50/80 transition-colors group cursor-pointer`}
+                      onClick={(e) => {
+                        if ((e.target as HTMLElement).closest('input[type="checkbox"], button')) return;
+                        openDetailModal(mutawif);
+                      }}
+                    >
+                      <TableCell className="pl-4 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                        <Checkbox 
+                          checked={isSelected}
+                          onCheckedChange={() => toggleSelect(targetSelectId)}
+                          aria-label={`Pilih ${mutawif.name}`}
+                        />
+                      </TableCell>
 
-                    {/* ID MW */}
-                    <TableCell className="py-4 whitespace-nowrap">
-                      <div className="font-bold text-sm tracking-tight text-[#480c0c] whitespace-nowrap">
-                        {mutawif.id}
-                      </div>
-                    </TableCell>
-
-                    {/* Nama Muthawwif */}
-                    <TableCell className="py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center font-bold text-emerald-800 text-xs shrink-0 border border-emerald-200">
-                          {mutawif.name
-                            .split(' ')
-                            .filter(Boolean)
-                            .map(n => n[0])
-                            .join('')
-                            .substring(0, 2)
-                            .toUpperCase()}
+                      {/* ID MW (Visual Code) */}
+                      <TableCell className="py-4 whitespace-nowrap">
+                        <div className="font-bold text-sm tracking-tight text-[#480c0c] whitespace-nowrap">
+                          {mutawif.code || mutawif.id}
                         </div>
-                        <div className="flex flex-col">
-                          <span className="font-bold text-gray-900 text-sm whitespace-nowrap">{mutawif.name}</span>
-                          <span className="text-xs text-gray-500 mt-0.5 font-medium whitespace-nowrap flex items-center gap-1">
-                            <MapPin className="w-3 h-3 text-gray-400" />
-                            Pembimbing Ibadah KSA (Haramain)
+                      </TableCell>
+
+                      {/* Nama Muthawwif */}
+                      <TableCell className="py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center font-bold text-emerald-800 text-xs shrink-0 border border-emerald-200">
+                            {mutawif.name
+                              .split(' ')
+                              .filter(Boolean)
+                              .map(n => n[0])
+                              .join('')
+                              .substring(0, 2)
+                              .toUpperCase()}
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="font-bold text-gray-900 text-sm whitespace-nowrap">{mutawif.name}</span>
+                            <span className="text-xs text-gray-500 mt-0.5 font-medium whitespace-nowrap flex items-center gap-1">
+                              <MapPin className="w-3 h-3 text-gray-400" />
+                              Pembimbing Ibadah KSA (Haramain)
+                            </span>
+                          </div>
+                        </div>
+                      </TableCell>
+
+                      {/* Penguasaan Bahasa */}
+                      <TableCell className="py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <Languages className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                          <span className="text-xs font-semibold text-gray-800">
+                            {mutawif.language || 'Arab, Indonesia'}
                           </span>
                         </div>
-                      </div>
-                    </TableCell>
+                      </TableCell>
 
-                    {/* Penguasaan Bahasa */}
-                    <TableCell className="py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        <Languages className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                        <span className="text-xs font-semibold text-gray-800">
-                          {mutawif.language || 'Arab, Indonesia'}
-                        </span>
-                      </div>
-                    </TableCell>
+                      {/* Kloter Penugasan */}
+                      <TableCell className="py-4 whitespace-nowrap">
+                        {assigned ? (
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold text-[#782820] bg-[#fcedea] border border-[#f5d0cb] shadow-2xs tracking-wide uppercase">
+                            {mutawif.group}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400 italic font-medium">
+                            Belum Ditugaskan
+                          </span>
+                        )}
+                      </TableCell>
 
-                    {/* Kloter Penugasan */}
-                    <TableCell className="py-4 whitespace-nowrap">
-                      {assigned ? (
-                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold text-[#782820] bg-[#fcedea] border border-[#f5d0cb] shadow-2xs tracking-wide uppercase">
-                          {mutawif.group}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-gray-400 italic font-medium">
-                          Belum Ditugaskan
-                        </span>
-                      )}
-                    </TableCell>
+                      {/* Pengalaman */}
+                      <TableCell className="py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <Award className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                          <span className="text-xs font-semibold text-gray-800">
+                            {mutawif.experience || '5 Tahun'}
+                          </span>
+                        </div>
+                      </TableCell>
 
-                    {/* Pengalaman */}
-                    <TableCell className="py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        <Award className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                        <span className="text-xs font-semibold text-gray-800">
-                          {mutawif.experience || '5 Tahun'}
-                        </span>
-                      </div>
-                    </TableCell>
+                      {/* Status Penugasan */}
+                      <TableCell className="py-4 whitespace-nowrap">
+                        {mutawif.status === 'Active' || mutawif.status === 'Aktif' ? (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-300 shadow-2xs">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            Aktif Bertugas
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-800 bg-amber-50 px-3 py-1 rounded-full border border-amber-300 shadow-2xs">
+                            <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            Siaga (Standby)
+                          </span>
+                        )}
+                      </TableCell>
 
-                    {/* Status Penugasan */}
-                    <TableCell className="py-4 whitespace-nowrap">
-                      {mutawif.status === 'Active' || mutawif.status === 'Aktif' ? (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-300 shadow-2xs">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                          Aktif Bertugas
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-800 bg-amber-50 px-3 py-1 rounded-full border border-amber-300 shadow-2xs">
-                          <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                          Siaga (Standby)
-                        </span>
-                      )}
-                    </TableCell>
+                      {/* Aksi */}
+                      <TableCell className="text-right pr-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1.5 whitespace-nowrap shrink-0">
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="w-8 h-8 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg cursor-pointer transition-colors shrink-0" 
+                            title="Lihat Data Muthawwif" 
+                            onClick={() => openDetailModal(mutawif)}
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="w-8 h-8 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg cursor-pointer transition-colors shrink-0" 
+                            title="Edit Muthawwif" 
+                            onClick={() => openEditModal(mutawif)}
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="w-8 h-8 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg cursor-pointer transition-colors shrink-0" 
+                            title="Hapus Data (Hard Delete)"
+                            onClick={() => {
+                              setSelectedIds(new Set([targetSelectId]));
+                              setIsDeleteDialogOpen(true);
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
 
-                    {/* Aksi */}
-                    <TableCell className="text-right pr-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1.5 whitespace-nowrap shrink-0">
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="w-8 h-8 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg cursor-pointer transition-colors shrink-0" 
-                          title="Lihat Data Muthawwif" 
-                          onClick={() => openDetailModal(mutawif)}
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="w-8 h-8 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg cursor-pointer transition-colors shrink-0" 
-                          title="Edit Muthawwif" 
-                          onClick={() => openEditModal(mutawif)}
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="w-8 h-8 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg cursor-pointer transition-colors shrink-0" 
-                          title="Hapus Data"
-                          onClick={() => {
-                            setSelectedIds(new Set([mutawif.id]));
-                            setIsDeleteDialogOpen(true);
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-
-              {filteredMutawifs.length === 0 && (
+              {!isLoading && filteredMutawifs.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={8} className="h-56 text-center">
                     <div className="flex flex-col items-center justify-center text-gray-500">
@@ -873,7 +1019,6 @@ export default function Mutawifs() {
           {/* TAB 1: DATA DIRI DETAIL */}
           {modalMode === 'detail' && (() => {
             const activeMutawif = editingMutawif || (formData.name ? (formData as Mutawif) : mutawifs[0]);
-            const matchedGroup = groups.find(g => g.name === activeMutawif?.group);
 
             return (
               <div className="space-y-7 animate-fade-in">
@@ -897,10 +1042,10 @@ export default function Mutawifs() {
                     <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
                       <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
                         <Globe className="w-4 h-4 text-[#782820] shrink-0" />
-                        <span>ID Muthawwif</span>
+                        <span>ID Kode Muthawwif</span>
                       </div>
-                      <span className="font-bold text-gray-900 text-sm text-right">
-                        {activeMutawif?.id || 'M-001'}
+                      <span className="font-bold text-gray-900 text-sm text-right font-mono">
+                        {activeMutawif?.code || activeMutawif?.id || 'MW-001'}
                       </span>
                     </div>
 
@@ -910,7 +1055,7 @@ export default function Mutawifs() {
                         <span>Penguasaan Bahasa</span>
                       </div>
                       <span className="font-bold text-gray-900 text-sm text-right">
-                        {activeMutawif?.language || 'Arab (Fasih), Indonesia, Inggris'}
+                        {activeMutawif?.language || 'Arab, Indonesia, Inggris'}
                       </span>
                     </div>
 
@@ -920,7 +1065,7 @@ export default function Mutawifs() {
                         <span>Pengalaman Lapangan</span>
                       </div>
                       <span className="font-bold text-gray-900 text-sm text-right">
-                        {activeMutawif?.experience || '8 tahun di Haramain'}
+                        {activeMutawif?.experience || '5 tahun di Haramain'}
                       </span>
                     </div>
 
@@ -940,52 +1085,69 @@ export default function Mutawifs() {
                   </div>
                 </div>
 
-                {/* Card 2: Rincian Penugasan Kloter */}
+                {/* Card 2: Rincian Penugasan Kloter (Backend Pivot) */}
                 <div>
                   <h2 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight mb-3">
-                    Rincian Penugasan Kloter
+                    Rincian Penugasan Kloter (Pivot Backend)
                   </h2>
 
-                  <div className="bg-white border border-[#cbd5e1] rounded-3xl overflow-hidden divide-y divide-[#e2e8f0] shadow-2xs">
-                    <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
-                      <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
-                        <Briefcase className="w-4 h-4 text-[#782820] shrink-0" />
-                        <span>Kloter Bimbingan Saat Ini</span>
+                  <div className="bg-white border border-[#cbd5e1] rounded-3xl overflow-hidden p-5 shadow-2xs space-y-4">
+                    {activeMutawif?.kloters && activeMutawif.kloters.length > 0 ? (
+                      <div className="space-y-2">
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Kloter Terdaftar:</p>
+                        {activeMutawif.kloters.map((k: any) => (
+                          <div key={k.id} className="flex items-center justify-between bg-emerald-50/50 border border-emerald-200 rounded-2xl p-3">
+                            <div className="flex items-center gap-3">
+                              <Briefcase className="w-4 h-4 text-emerald-700 shrink-0" />
+                              <div>
+                                <span className="font-bold text-gray-900 text-sm">{k.name}</span>
+                                {k.code && <span className="text-xs text-gray-500 font-mono ml-2">({k.code})</span>}
+                              </div>
+                            </div>
+                            {activeMutawif.backendId && (
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                disabled={isSubmitting}
+                                onClick={() => handleUnassignKloter(activeMutawif.backendId!, k.id)}
+                                className="h-8 text-xs font-semibold text-rose-700 border-rose-200 hover:bg-rose-50 rounded-xl"
+                              >
+                                <Unlink className="w-3.5 h-3.5 mr-1" />
+                                Lepas Kloter
+                              </Button>
+                            )}
+                          </div>
+                        ))}
                       </div>
-                      <span className="font-bold text-gray-900 text-sm text-right">
-                        {activeMutawif?.group || 'Group A-1'}
-                      </span>
-                    </div>
+                    ) : (
+                      <p className="text-xs text-gray-500 italic">Belum ada Kloter teralokasi via pivot Backend.</p>
+                    )}
 
-                    <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
-                      <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
-                        <Users className="w-4 h-4 text-[#782820] shrink-0" />
-                        <span>Estimasi Jamaah Kloter</span>
+                    {/* Quick Assign Dropdown */}
+                    {activeMutawif?.backendId && (
+                      <div className="pt-3 border-t border-gray-100 flex flex-col sm:flex-row items-center gap-3">
+                        <select
+                          value={selectedKloterIdToAssign}
+                          onChange={(e) => setSelectedKloterIdToAssign(e.target.value)}
+                          className="h-10 flex-1 w-full rounded-xl border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                        >
+                          <option value="">-- Pilih Kloter untuk Ditugaskan --</option>
+                          {groups.map(g => (
+                            <option key={g.backendId || g.id} value={g.backendId || g.id}>
+                              {g.name} ({g.kloter || g.id})
+                            </option>
+                          ))}
+                        </select>
+                        <Button
+                          disabled={!selectedKloterIdToAssign || isSubmitting}
+                          onClick={() => handleAssignKloter(activeMutawif.backendId!, selectedKloterIdToAssign)}
+                          className="h-10 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-2xs shrink-0 w-full sm:w-auto justify-center"
+                        >
+                          {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Link className="w-3.5 h-3.5 mr-1" />}
+                          Tugaskan Kloter
+                        </Button>
                       </div>
-                      <span className="font-bold text-gray-900 text-sm text-right">
-                        {matchedGroup?.pilgrims ? `${matchedGroup.pilgrims} Jamaah` : '45 Jamaah'}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
-                      <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
-                        <UserCheck className="w-4 h-4 text-[#782820] shrink-0" />
-                        <span>Tour Leader Pendamping</span>
-                      </div>
-                      <span className="font-bold text-gray-900 text-sm text-right">
-                        {matchedGroup?.tourLeader || 'Ust. Khalid Basalamah'}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
-                      <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
-                        <MapPin className="w-4 h-4 text-[#782820] shrink-0" />
-                        <span>Wilayah Tugas</span>
-                      </div>
-                      <span className="font-bold text-gray-900 text-sm text-right">
-                        Masjidil Haram (Makkah) & Masjid Nabawi (Madinah)
-                      </span>
-                    </div>
+                    )}
                   </div>
                 </div>
 
@@ -1018,16 +1180,16 @@ export default function Mutawifs() {
                 </div>
 
                 <div className="space-y-4">
-                  {/* ID MUTHAWWIF */}
+                  {/* ID / KODE MUTHAWWIF */}
                   <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
                     <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                      ID MUTHAWWIF *
+                      KODE MUTHAWWIF (VISUAL) *
                     </label>
                     <div className="sm:col-span-8">
                       <Input 
-                        value={formData.id || ''} 
-                        onChange={(e) => setFormData({ ...formData, id: e.target.value })} 
-                        placeholder="Cth. M-001" 
+                        value={formData.code || formData.id || ''} 
+                        onChange={(e) => setFormData({ ...formData, code: e.target.value })} 
+                        placeholder="Cth. MW-001" 
                         className="h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base font-bold text-gray-900 placeholder:text-gray-400 placeholder:font-normal px-4 sm:px-5 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859]"
                       />
                     </div>
@@ -1051,7 +1213,7 @@ export default function Mutawifs() {
                   {/* PENGUASAAN BAHASA */}
                   <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
                     <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                      PENGUASAAN BAHASA
+                      PENGUASAAN BAHASA *
                     </label>
                     <div className="sm:col-span-8">
                       <Input 
@@ -1081,7 +1243,7 @@ export default function Mutawifs() {
                   {/* STATUS KESIAPAN */}
                   <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
                     <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                      STATUS KESIAPAN
+                      STATUS KESIAPAN *
                     </label>
                     <div className="sm:col-span-8">
                       <select
@@ -1097,53 +1259,22 @@ export default function Mutawifs() {
                 </div>
               </div>
 
-              {/* Section 2: RINCIAN PENUGASAN KLOTER */}
-              <div className="bg-white border border-[#cbd5e1] rounded-3xl p-5 sm:p-7 shadow-2xs">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-7 h-7 rounded-lg border border-gray-300 text-gray-800 bg-white flex items-center justify-center text-xs font-bold font-mono shadow-2xs">
-                    2
-                  </div>
-                  <h3 className="text-base sm:text-[17px] font-black text-gray-900 uppercase tracking-wide">
-                    RINCIAN PENUGASAN KLOTER
-                  </h3>
-                </div>
-
-                <div className="space-y-4">
-                  {/* KLOTER PENUGASAN */}
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
-                    <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                      KLOTER PENUGASAN *
-                    </label>
-                    <div className="sm:col-span-8">
-                      <select
-                        value={formData.group || 'Belum Ditugaskan'}
-                        onChange={(e) => setFormData({ ...formData, group: e.target.value })}
-                        className="h-12 sm:h-13 w-full rounded-2xl border border-gray-300 bg-white px-4 sm:px-5 text-base font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859] cursor-pointer"
-                      >
-                        <option value="Belum Ditugaskan">-- Belum Ditugaskan --</option>
-                        <option value="Group A-1">Group A-1</option>
-                        {groups.map(g => (
-                          <option key={g.id} value={g.name}>{g.name} ({g.kloter || g.id})</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
               {/* Action Buttons */}
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
                 <Button 
                   variant="outline" 
+                  disabled={isSubmitting}
                   onClick={() => setIsModalOpen(false)} 
                   className="h-12 rounded-2xl px-7 font-bold text-gray-800 border-gray-300 hover:bg-gray-50 text-base cursor-pointer shadow-2xs"
                 >
                   Batal
                 </Button>
                 <Button 
+                  disabled={isSubmitting}
                   onClick={saveMutawif} 
-                  className="h-12 rounded-2xl px-8 font-bold text-white bg-[#00a859] hover:bg-[#008f4c] text-base cursor-pointer shadow-2xs"
+                  className="h-12 rounded-2xl px-8 font-bold text-white bg-[#00a859] hover:bg-[#008f4c] text-base cursor-pointer shadow-2xs flex items-center justify-center gap-2"
                 >
+                  {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
                   {editingMutawif ? 'Simpan Perubahan' : 'Simpan Muthawwif'}
                 </Button>
               </div>
@@ -1152,7 +1283,7 @@ export default function Mutawifs() {
         </DialogContent>
       </Dialog>
 
-      {/* Confirm Bulk / Single Delete Dialog */}
+      {/* Confirm Delete Dialog (Hard Delete) */}
       <ConfirmDeleteDialog 
         isOpen={isDeleteDialogOpen} 
         onClose={() => setIsDeleteDialogOpen(false)} 
