@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from '@/lib/toast';
 import { ConfirmDeleteDialog } from '@/components/ui/ConfirmDeleteDialog';
@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/ui/Checkbox';
 import { Badge } from '@/components/ui/Badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/Dialog';
 import { useStore, Schedule, ScheduleCategory } from '@/core/store';
+import { journeyService } from '@/core/services/journeyService';
 import { exportToExcel } from '@/lib/export';
 import { exportJourneyScheduleToPdf } from '@/lib/exportPdf';
 import { 
@@ -26,7 +27,11 @@ export default function Journey() {
 // Komponen utama untuk fitur JOURNEY
 // ==========================================
 
-  const { schedules, addSchedule, updateSchedule, deleteSchedules } = useStore();
+  const { schedules, setSchedules, addSchedule, updateSchedule, deleteSchedules } = useStore();
+
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [viewMode, setViewMode] = useState<'timeline' | 'table'>('timeline');
   const [searchTerm, setSearchTerm] = useState('');
@@ -49,6 +54,28 @@ export default function Journey() {
     category: 'ibadah',
     dayNumber: 1
   });
+
+  const fetchSchedulesFromApi = async () => {
+    try {
+      setIsLoading(true);
+      const data = await journeyService.getSchedules({
+        q: searchTerm || undefined,
+        category: filterCategory !== 'all' ? filterCategory : undefined,
+        date: filterDate || undefined,
+        day_number: selectedDayTab !== 'all' ? selectedDayTab : undefined,
+      });
+      setSchedules(data);
+    } catch (err: any) {
+      console.error('Failed to fetch schedules from API:', err);
+      toast(err.message || 'Gagal memuat data perjalanan dari server', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSchedulesFromApi();
+  }, [searchTerm, filterCategory, filterDate, selectedDayTab]);
 
   const now = new Date();
 
@@ -264,30 +291,42 @@ export default function Journey() {
     setIsDeleteDialogOpen(true);
   };
 
-  const confirmDelete = () => {
-    deleteSchedules(Array.from(selectedIds));
-    setSelectedIds(new Set());
-    setIsDeleteDialogOpen(false);
-    toast("Jadwal terpilih berhasil dihapus.");
+  const confirmDelete = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+
+    try {
+      setIsDeleting(true);
+      for (const id of ids) {
+        await journeyService.deleteSchedule(id);
+      }
+      deleteSchedules(ids);
+      setSelectedIds(new Set());
+      setIsDeleteDialogOpen(false);
+      toast("Jadwal terpilih berhasil dihapus.", "success");
+    } catch (err: any) {
+      console.error('Failed to delete schedules:', err);
+      toast(err.message || "Gagal menghapus jadwal terpilih", "error");
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
-  const toggleStatusOverride = (schedule: Schedule) => {
+  const toggleStatusOverride = async (schedule: Schedule) => {
     const currentStatus = getScheduleStatus(schedule);
     let nextStatus: 'completed' | 'in_progress' | 'upcoming';
     if (currentStatus === 'upcoming') nextStatus = 'in_progress';
     else if (currentStatus === 'in_progress') nextStatus = 'completed';
     else nextStatus = 'upcoming';
 
-    if (nextStatus === 'in_progress') {
-      schedules.forEach(s => {
-        if (s.id !== schedule.id && s.statusOverride === 'in_progress') {
-          updateSchedule(s.id, { statusOverride: undefined });
-        }
-      });
+    try {
+      const updated = await journeyService.updateScheduleStatus(schedule.id, nextStatus);
+      updateSchedule(schedule.id, updated);
+      toast(`Status kegiatan diubah menjadi "${nextStatus === 'completed' ? 'Selesai' : nextStatus === 'in_progress' ? 'Sedang Berlangsung' : 'Belum Mulai'}"`, "success");
+    } catch (err: any) {
+      console.error('Failed to update schedule status:', err);
+      toast(err.message || "Gagal memperbarui status kegiatan", "error");
     }
-
-    updateSchedule(schedule.id, { statusOverride: nextStatus });
-    toast(`Status kegiatan diubah menjadi "${nextStatus === 'completed' ? 'Selesai' : nextStatus === 'in_progress' ? 'Sedang Berlangsung' : 'Belum Mulai'}"`);
   };
 
   const openAddModal = () => {
@@ -311,30 +350,39 @@ export default function Journey() {
     setIsModalOpen(true);
   };
 
-  const saveSchedule = () => {
+  const saveSchedule = async () => {
     if (!formData.title || !formData.date || !formData.time) {
-      toast("Mohon isi judul, tanggal, dan waktu kegiatan.");
+      toast("Mohon isi judul, tanggal, dan waktu kegiatan.", "error");
       return;
     }
 
-    if (editingSchedule) {
-      updateSchedule(editingSchedule.id, formData);
-      toast("Jadwal berhasil diperbarui.");
-    } else {
-      addSchedule({
-        id: `S-${Math.floor(100 + Math.random() * 900)}`,
-        title: formData.title || 'Kegiatan Tanpa Judul',
-        date: formData.date || '2026-07-27',
-        time: formData.time || '08:00',
-        location: formData.location || 'Lokasi Kegiatan',
-        keterangan: formData.keterangan || '',
-        category: formData.category || 'ibadah',
-        pic: formData.pic || '',
-        dayNumber: Number(formData.dayNumber) || 1
-      });
-      toast("Jadwal baru berhasil ditambahkan.");
+    try {
+      setIsSaving(true);
+      if (editingSchedule) {
+        const updated = await journeyService.updateSchedule(editingSchedule.id, formData);
+        updateSchedule(editingSchedule.id, updated);
+        toast("Jadwal berhasil diperbarui.", "success");
+      } else {
+        const created = await journeyService.createSchedule({
+          title: formData.title || 'Kegiatan Tanpa Judul',
+          date: formData.date || new Date().toISOString().split('T')[0],
+          time: formData.time || '08:00',
+          location: formData.location || '',
+          keterangan: formData.keterangan || '',
+          category: formData.category || 'ibadah',
+          pic: formData.pic || '',
+          dayNumber: Number(formData.dayNumber) || 1
+        });
+        addSchedule(created);
+        toast("Jadwal baru berhasil ditambahkan.", "success");
+      }
+      setIsModalOpen(false);
+    } catch (err: any) {
+      console.error('Failed to save schedule:', err);
+      toast(err.message || "Gagal menyimpan jadwal kegiatan", "error");
+    } finally {
+      setIsSaving(false);
     }
-    setIsModalOpen(false);
   };
 
   const handleExportPDF = () => {
@@ -1090,9 +1138,16 @@ export default function Journey() {
               </Button>
               <Button 
                 onClick={saveSchedule} 
-                className="h-12 rounded-2xl px-8 font-bold text-white bg-[#00a859] hover:bg-[#008f4c] text-base cursor-pointer shadow-2xs"
+                disabled={isSaving}
+                className="h-12 rounded-2xl px-8 font-bold text-white bg-[#00a859] hover:bg-[#008f4c] text-base cursor-pointer shadow-2xs disabled:opacity-50"
               >
-                {editingSchedule ? 'Simpan Perubahan' : 'Simpan Agenda'}
+                {isSaving ? (
+                  <span className="flex items-center gap-2">
+                    <RefreshCw className="w-4 h-4 animate-spin" /> Menyimpan...
+                  </span>
+                ) : (
+                  editingSchedule ? 'Simpan Perubahan' : 'Simpan Agenda'
+                )}
               </Button>
             </div>
           </div>
