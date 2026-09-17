@@ -143,6 +143,7 @@ export type Schedule = {
   keterangan: string;
   category?: ScheduleCategory;
   statusOverride?: 'completed' | 'in_progress' | 'upcoming';
+  status?: 'completed' | 'in_progress' | 'upcoming';
   pic?: string;
   dayNumber?: number;
 };
@@ -294,6 +295,7 @@ type StoreState = {
   deleteMutawif: (id: string) => void;
   deleteMutawifs: (ids: string[]) => void;
 
+  setSchedules: (schedules: Schedule[]) => void;
   addSchedule: (s: Schedule) => void;
   updateSchedule: (id: string, s: Partial<Schedule>) => void;
   deleteSchedule: (id: string) => void;
@@ -641,140 +643,7 @@ export const useStore = create<StoreState>((set) => ({
     { id: "M-002", name: "Syeikh Bilal", language: "Arabic, ENG", experience: "5 years", group: "Group A-2", status: "Active" },
     { id: "M-003", name: "Syeikh Tariq", language: "Arabic, IND, ENG", experience: "12 years", group: "Group B-1", status: "Standby" },
   ],
-  schedules: [
-    {
-      id: "S-001",
-      dayNumber: 1,
-      date: "2026-07-26",
-      time: "08:30",
-      title: "Berkumpul di Bandara Soekarno-Hatta (CGK)",
-      location: "Terminal 3 Bandara Soekarno Hatta",
-      keterangan: "Pemeriksaan pasport, penyerahan koper, dan pengarahan singkat oleh Tour Leader",
-      category: "transit",
-      pic: "Ust. Khalid Basalamah",
-    },
-    {
-      id: "S-002",
-      dayNumber: 1,
-      date: "2026-07-26",
-      time: "12:45",
-      title: "Penerbangan CGK - JED (Saudia Airlines SV-819)",
-      location: "Pesawat Saudia Airlines",
-      keterangan: "Takeoff menuju Jeddah, estimasi penerbangan 9 jam 30 menit",
-      category: "transit",
-      pic: "Ust. Khalid Basalamah",
-    },
-    {
-      id: "S-003",
-      dayNumber: 1,
-      date: "2026-07-26",
-      time: "18:20",
-      title: "Tiba di Bandara King Abdulaziz Jeddah & Check-in Hotel Madinah",
-      location: "Anwar Al Madinah Movenpick Hotel",
-      keterangan: "Proses imigrasi, pengambilan bagasi koper, dan perjalanan bus AC menuju Madinah",
-      category: "hotel",
-      pic: "Syeikh Ammar (Mutawif)",
-    },
-    {
-      id: "S-004",
-      dayNumber: 2,
-      date: "2026-07-27",
-      time: "03:30",
-      title: "Qiyamul Lail & Shalat Subuh Berjamaah",
-      location: "Masjid Nabawi Madinah",
-      keterangan: "Ibadah mandiri & keutamaan shalat di Masjid Nabawi",
-      category: "ibadah",
-      pic: "Ust. Khalid Basalamah",
-    },
-    {
-      id: "S-005",
-      dayNumber: 2,
-      date: "2026-07-27",
-      time: "07:00",
-      title: "Sarapan Pagi di Restoran Hotel",
-      location: "Restoran Utama Movenpick Madinah",
-      keterangan: "Prasmanan masakan Indonesia & Internasional",
-      category: "makan",
-      pic: "Tim Konsumsi Hotel",
-    },
-    {
-      id: "S-006",
-      dayNumber: 2,
-      date: "2026-07-27",
-      time: "08:30",
-      title: "Ziyarah Dalam & Ziarah Raudhah (Raudhah Sharif)",
-      location: "Masjid Nabawi - Bab Al-Salam & Raudhah",
-      keterangan: "Sesuai tasrih/izin Nusuk. Ziarah Makam Rasulullah SAW, Abu Bakar RA, dan Umar RA",
-      category: "ziyarah",
-      pic: "Syeikh Ammar (Mutawif)",
-    },
-    {
-      id: "S-007",
-      dayNumber: 2,
-      date: "2026-07-27",
-      time: "16:00",
-      title: "Manasik Pemantapan & Persiapan Ihram Makkah",
-      location: "Ballroom Hotel Movenpick Lt. 2",
-      keterangan: "Pengarahan larangan ihram, rukun umrah, dan koordinasi keberangkatan besok ke Makkah",
-      category: "manasik",
-      pic: "Ust. Khalid Basalamah",
-    },
-    {
-      id: "S-008",
-      dayNumber: 3,
-      date: "2026-07-28",
-      time: "09:00",
-      title: "Ziyarah Luar Kota Madinah (Masjid Quba & Jabal Uhud)",
-      location: "Masjid Quba, Jabal Uhud, Pasar Kurma",
-      keterangan: "Shalat 2 rakaat di Masjid Quba (Pahala Umrah), ziarah syuhada Uhud",
-      category: "ziyarah",
-      pic: "Syeikh Ammar (Mutawif)",
-    },
-    {
-      id: "S-009",
-      dayNumber: 3,
-      date: "2026-07-28",
-      time: "14:00",
-      title: "Check-out Hotel & Ambil Miqat di Masjid Bir Ali",
-      location: "Masjid Bir Ali (Dzulhulaifah)",
-      keterangan: "Mandi ihram di hotel, niat Umrah di Bir Ali, berpakaian ihram full",
-      category: "transit",
-      pic: "Ust. Khalid Basalamah",
-    },
-    {
-      id: "S-010",
-      dayNumber: 3,
-      date: "2026-07-28",
-      time: "20:00",
-      title: "Tiba di Makkah & Pelaksanaan Tawaf, Sa'i, Tahallul (Umrah Wajib)",
-      location: "Masjidil Haram Makkah",
-      keterangan: "Check-in Swissôtel Al Maqam, dilanjutkan Umrah Wajib dipimpin Mutawif secara berkelompok",
-      category: "ibadah",
-      pic: "Syeikh Ammar & Ust. Khalid",
-    },
-    {
-      id: "S-011",
-      dayNumber: 4,
-      date: "2026-07-29",
-      time: "08:00",
-      title: "Ziyarah Makkah Al-Mukarramah",
-      location: "Jabal Tsur, Padang Arafah, Jabal Rahmah, Muzdalifah, Mina",
-      keterangan: "Mengenal situs-situs bersejarah pelaksanaan ibadah Hajj & Umrah",
-      category: "ziyarah",
-      pic: "Syeikh Ammar (Mutawif)",
-    },
-    {
-      id: "S-012",
-      dayNumber: 5,
-      date: "2026-07-30",
-      time: "16:00",
-      title: "Tawaf Wada' (Tawaf Perpisahan) & Persiapan Pulang",
-      location: "Masjidil Haram Makkah",
-      keterangan: "Pelaksanaan Tawaf Perpisahan sebelum meninggalkan kota suci Makkah",
-      category: "ibadah",
-      pic: "Ust. Khalid Basalamah",
-    }
-  ],
+  schedules: [],
   emergencies: [
     { id: "SOS-2991", pilgrim: "Ahmad Abdullah", group: "Group A-1", location: "Gate 1, Masjidil Haram", date: "2024-06-01", time: "14:30", type: "Medical Emergency", status: "Active" },
     { id: "SOS-2990", pilgrim: "Siti Aminah", group: "Group B-2", location: "Jabal Rahmah", date: "2024-06-02", time: "09:15", type: "Lost Person", status: "Resolved" },
@@ -1376,6 +1245,7 @@ export const useStore = create<StoreState>((set) => ({
     };
   }),
 
+  setSchedules: (schedules) => set({ schedules }),
   addSchedule: (s) => set((state) => ({ schedules: [s, ...state.schedules] })),
   updateSchedule: (id, updates) => set((state) => ({ schedules: state.schedules.map(s => s.id === id ? { ...s, ...updates } : s) })),
   deleteSchedule: (id) => set((state) => {
