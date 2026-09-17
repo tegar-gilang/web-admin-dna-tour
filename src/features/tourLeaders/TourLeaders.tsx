@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table';
 import { Button } from '@/components/ui/Button';
@@ -7,24 +7,30 @@ import { Checkbox } from '@/components/ui/Checkbox';
 import { Dialog, DialogContent } from '@/components/ui/Dialog';
 import { ConfirmDeleteDialog } from '@/components/ui/ConfirmDeleteDialog';
 import { useStore, TourLeader } from '@/core/store';
+import { tourLeaderService } from '@/core/services/tourLeaderService';
 import { toast } from '@/lib/toast';
 import { exportToExcel } from '@/lib/export';
 import { 
   Search, Filter, UserPlus, Trash2, Edit2, Eye,
   Users, Briefcase, Phone, Award, X, FileSpreadsheet,
   CheckCircle2, Clock, Calendar, User, UserCheck, Check,
-  Compass, MapPin, ShieldCheck, Sparkles
+  Compass, MapPin, ShieldCheck, Sparkles, Loader2, AlertCircle, RefreshCw, Plus
 } from 'lucide-react';
 
 export default function TourLeaders() {
 
 // ==========================================
 // FITUR: TOURLEADERS
-// Komponen utama untuk fitur TOURLEADERS
+// Komponen utama untuk fitur TOURLEADERS (API Integrated)
 // ==========================================
 
-  const { tourLeaders, addTourLeader, updateTourLeader, deleteTourLeaders, groups } = useStore();
+  const { tourLeaders, setTourLeaders, groups } = useStore();
   
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState<'all' | 'active' | 'resting' | 'assigned' | 'unassigned'>('all');
   const [showFilters, setShowFilters] = useState(false);
@@ -43,8 +49,35 @@ export default function TourLeaders() {
   const [editingLeader, setEditingLeader] = useState<TourLeader | null>(null);
   const [formData, setFormData] = useState<Partial<TourLeader>>({});
 
+  // Additional state for adding new kloter assignment inside modal
+  const [selectedKloterToAssign, setSelectedKloterToAssign] = useState<string>('');
+  const [isAssigningKloter, setIsAssigningKloter] = useState<boolean>(false);
+
+  // Fetch Tour Leaders from Backend API
+  const fetchTourLeaders = useCallback(async () => {
+    setIsLoading(true);
+    setErrorMsg(null);
+    try {
+      const data = await tourLeaderService.getTourLeaders();
+      setTourLeaders(data);
+    } catch (err: any) {
+      const msg = err?.message || 'Gagal mengambil data Tour Leader dari server.';
+      setErrorMsg(msg);
+      toast(msg, 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [setTourLeaders]);
+
+  useEffect(() => {
+    fetchTourLeaders();
+  }, [fetchTourLeaders]);
+
   // Helper check assigned
-  const isAssigned = (l: TourLeader) => Boolean(l.group && l.group !== 'Unassigned' && l.group !== 'Belum Ditugaskan' && l.group !== '-');
+  const isAssigned = (l: TourLeader) => Boolean(
+    (l.kloters && l.kloters.length > 0) || 
+    (l.group && l.group !== 'Unassigned' && l.group !== 'Belum Ditugaskan' && l.group !== '-')
+  );
 
   // Statistics calculation
   const totalLeaders = tourLeaders.length;
@@ -80,25 +113,29 @@ export default function TourLeaders() {
         if (filterStatus === 'STANDBY' && leader.status !== 'Standby' && leader.status !== 'Siaga') return false;
       }
 
-      // Group filter
-      if (filterGroup && leader.group !== filterGroup) {
-        return false;
+      // Group filter (matches any kloter in leader.kloters or leader.group)
+      if (filterGroup) {
+        const hasMatchingKloter = leader.kloters?.some(k => k.name === filterGroup || k.id === filterGroup || k.code === filterGroup)
+          || leader.group === filterGroup;
+        if (!hasMatchingKloter) return false;
       }
 
       // Search matching
       const matchSearch = 
         leader.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        leader.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (leader.id && leader.id.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (leader.loginId && leader.loginId.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (leader.phone && leader.phone.includes(searchTerm)) ||
         (leader.group && leader.group.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (leader.kloters && leader.kloters.some(k => k.name.toLowerCase().includes(searchTerm.toLowerCase()))) ||
         ((leader.experience || leader.performance || '').toLowerCase().includes(searchTerm.toLowerCase()));
 
       return matchSearch;
     }).sort((a, b) => {
       if (sortBy === 'name-asc') return a.name.localeCompare(b.name);
       if (sortBy === 'name-desc') return b.name.localeCompare(a.name);
-      if (sortBy === 'id-asc') return a.id.localeCompare(b.id);
-      if (sortBy === 'id-desc') return b.id.localeCompare(a.id);
+      if (sortBy === 'id-asc') return (a.id || '').localeCompare(b.id || '');
+      if (sortBy === 'id-desc') return (b.id || '').localeCompare(a.id || '');
       return 0;
     });
   }, [tourLeaders, activeTab, filterStatus, filterGroup, searchTerm, sortBy]);
@@ -108,7 +145,7 @@ export default function TourLeaders() {
     if (selectedIds.size === filteredLeaders.length && filteredLeaders.length > 0) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(filteredLeaders.map(l => l.id)));
+      setSelectedIds(new Set(filteredLeaders.map(l => l.backendId || l.id)));
     }
   };
 
@@ -123,11 +160,23 @@ export default function TourLeaders() {
     setIsDeleteDialogOpen(true);
   };
 
-  const confirmDelete = () => {
-    deleteTourLeaders(Array.from(selectedIds));
-    setSelectedIds(new Set());
-    setIsDeleteDialogOpen(false);
-    toast(`${selectedIds.size} data tour leader berhasil dihapus.`, "success");
+  const confirmDelete = async () => {
+    setIsDeleting(true);
+    try {
+      const leadersToDelete = tourLeaders.filter(l => selectedIds.has(l.backendId) || selectedIds.has(l.id));
+      for (const leader of leadersToDelete) {
+        await tourLeaderService.deleteTourLeaderWithUnassign(leader);
+      }
+      toast(`${selectedIds.size} data Tour Leader berhasil dihapus dari database.`, "success");
+      setSelectedIds(new Set());
+      setIsDeleteDialogOpen(false);
+      await fetchTourLeaders();
+    } catch (err: any) {
+      const msg = err?.message || 'Gagal menghapus Tour Leader. Pastikan penugasan kloter sudah dilepas terlebih dahulu.';
+      toast(msg, "error");
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   // Modal actions
@@ -136,13 +185,15 @@ export default function TourLeaders() {
     setEditingLeader(null);
     setFormData({
       id: newId,
+      loginId: newId,
       name: '',
       phone: '',
       status: 'Active',
       experience: '5 Tahun',
       performance: 'Sangat Baik / Berpengalaman',
-      group: groups.length > 0 ? groups[0].name : 'Belum Ditugaskan'
+      group: 'Belum Ditugaskan'
     });
+    setSelectedKloterToAssign('');
     setModalMode('edit');
     setIsModalOpen(true);
   };
@@ -150,6 +201,7 @@ export default function TourLeaders() {
   const openEditModal = (leader: TourLeader) => {
     setEditingLeader(leader);
     setFormData({ ...leader });
+    setSelectedKloterToAssign('');
     setModalMode('edit');
     setIsModalOpen(true);
   };
@@ -157,50 +209,126 @@ export default function TourLeaders() {
   const openDetailModal = (leader: TourLeader) => {
     setEditingLeader(leader);
     setFormData(leader);
+    setSelectedKloterToAssign('');
     setModalMode('detail');
     setIsModalOpen(true);
   };
 
-  const saveLeader = () => {
+  const saveLeader = async () => {
     if (!formData.name || !formData.name.trim()) {
       toast("Nama Tour Leader wajib diisi.", "error");
       return;
     }
 
-    if (editingLeader) {
-      updateTourLeader(editingLeader.id, {
-        name: formData.name.trim(),
-        phone: formData.phone?.trim() || '',
-        group: formData.group || 'Belum Ditugaskan',
-        experience: formData.experience?.trim() || '1 Tahun',
-        performance: formData.performance?.trim() || 'Sangat Baik',
-        status: formData.status || 'Active',
-      });
-      toast(`Data Tour Leader ${formData.name} berhasil diperbarui.`, "success");
-    } else {
-      const newId = formData.id || `TL-${Math.floor(100 + Math.random() * 900)}`;
-      addTourLeader({
-        id: newId,
-        name: formData.name.trim(),
-        phone: formData.phone?.trim() || '',
-        group: formData.group || 'Belum Ditugaskan',
-        experience: formData.experience?.trim() || '1 Tahun',
-        performance: formData.performance?.trim() || 'Sangat Baik',
-        status: formData.status || 'Active',
-      });
-      toast(`Tour Leader ${formData.name} berhasil ditambahkan.`, "success");
+    const loginIdValue = (formData.loginId || formData.id || '').trim();
+    if (!loginIdValue) {
+      toast("ID Tour Leader / Login ID wajib diisi.", "error");
+      return;
     }
-    setIsModalOpen(false);
+
+    setIsSaving(true);
+    try {
+      if (editingLeader) {
+        // Update existing Tour Leader
+        const updated = await tourLeaderService.updateTourLeader(editingLeader.backendId, {
+          loginId: loginIdValue,
+          name: formData.name.trim(),
+          phone: formData.phone?.trim() || '',
+          experience: formData.experience?.trim() || '',
+          performance: formData.performance?.trim() || '',
+          status: formData.status || 'Active',
+        });
+
+        // If a new kloter is selected to be assigned in form
+        if (selectedKloterToAssign && selectedKloterToAssign !== 'Belum Ditugaskan') {
+          const matchedGroup = groups.find(g => g.id === selectedKloterToAssign || g.name === selectedKloterToAssign || g.backendId === selectedKloterToAssign);
+          const kloterUuid = matchedGroup?.backendId || matchedGroup?.id || selectedKloterToAssign;
+          if (kloterUuid) {
+            await tourLeaderService.assignKloter(updated.backendId, kloterUuid);
+          }
+        }
+
+        toast(`Data Tour Leader ${formData.name} berhasil diperbarui.`, "success");
+      } else {
+        // Create new Tour Leader
+        const created = await tourLeaderService.createTourLeader({
+          loginId: loginIdValue,
+          name: formData.name.trim(),
+          phone: formData.phone?.trim() || '',
+          experience: formData.experience?.trim() || '1 Tahun',
+          performance: formData.performance?.trim() || 'Sangat Baik',
+          status: formData.status || 'Active',
+        });
+
+        // Assign kloter if selected
+        if (selectedKloterToAssign && selectedKloterToAssign !== 'Belum Ditugaskan') {
+          const matchedGroup = groups.find(g => g.id === selectedKloterToAssign || g.name === selectedKloterToAssign || g.backendId === selectedKloterToAssign);
+          const kloterUuid = matchedGroup?.backendId || matchedGroup?.id || selectedKloterToAssign;
+          if (kloterUuid) {
+            await tourLeaderService.assignKloter(created.backendId, kloterUuid);
+          }
+        }
+
+        toast(`Tour Leader ${formData.name} berhasil ditambahkan ke database.`, "success");
+      }
+
+      setIsModalOpen(false);
+      await fetchTourLeaders();
+    } catch (err: any) {
+      const msg = err?.message || 'Gagal menyimpan data Tour Leader ke server.';
+      toast(msg, "error");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Helper assign single kloter from modal
+  const handleAssignKloterToLeader = async (leaderBackendId: string, kloterIdOrUuid: string) => {
+    if (!kloterIdOrUuid || kloterIdOrUuid === 'Belum Ditugaskan') return;
+    const matchedGroup = groups.find(g => g.id === kloterIdOrUuid || g.name === kloterIdOrUuid || g.backendId === kloterIdOrUuid);
+    const kloterUuid = matchedGroup?.backendId || matchedGroup?.id || kloterIdOrUuid;
+    
+    setIsAssigningKloter(true);
+    try {
+      const updated = await tourLeaderService.assignKloter(leaderBackendId, kloterUuid);
+      toast(`Kloter berhasil ditugaskan ke Tour Leader.`, "success");
+      setEditingLeader(updated);
+      setFormData(updated);
+      setSelectedKloterToAssign('');
+      await fetchTourLeaders();
+    } catch (err: any) {
+      toast(err?.message || 'Gagal menugaskan Kloter.', 'error');
+    } finally {
+      setIsAssigningKloter(false);
+    }
+  };
+
+  // Helper unassign single kloter from modal
+  const handleUnassignKloterFromLeader = async (leaderBackendId: string, kloterUuid: string) => {
+    setIsAssigningKloter(true);
+    try {
+      await tourLeaderService.unassignKloter(leaderBackendId, kloterUuid);
+      toast(`Penugasan Kloter berhasil dilepas.`, "success");
+      
+      const refreshedDetail = await tourLeaderService.getTourLeaderById(leaderBackendId);
+      setEditingLeader(refreshedDetail);
+      setFormData(refreshedDetail);
+      await fetchTourLeaders();
+    } catch (err: any) {
+      toast(err?.message || 'Gagal melepaskan penugasan Kloter.', 'error');
+    } finally {
+      setIsAssigningKloter(false);
+    }
   };
 
   // Export to Excel
   const handleExportExcel = () => {
     const exportData = filteredLeaders.map((t, idx) => ({
       'No.': idx + 1,
-      'ID Tour Leader': t.id,
+      'ID Tour Leader': t.loginId || t.id,
       'Nama Lengkap': t.name,
       'No. Telepon / WA': t.phone || '-',
-      'Kloter Penugasan': t.group || 'Belum Ditugaskan',
+      'Kloter Penugasan': t.kloters && t.kloters.length > 0 ? t.kloters.map(k => k.name).join(', ') : t.group || 'Belum Ditugaskan',
       'Pengalaman / Jam Terbang': t.experience || '-',
       'Catatan Performa': t.performance || 'Baik',
       'Status Penugasan': t.status === 'Active' || t.status === 'Aktif' ? 'Aktif Bertugas' : t.status === 'Resting' || t.status === 'Istirahat' ? 'Istirahat / Off' : t.status === 'Standby' || t.status === 'Siaga' ? 'Siaga' : t.status,
@@ -228,6 +356,16 @@ export default function TourLeaders() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+            <Button
+              onClick={fetchTourLeaders}
+              variant="outline"
+              disabled={isLoading}
+              className="text-xs h-10 font-semibold text-gray-700 border-gray-200 bg-white hover:bg-gray-50 justify-center px-3 rounded-xl cursor-pointer shadow-2xs"
+              title="Refresh Data dari Server"
+            >
+              <RefreshCw className={`w-4 h-4 text-gray-600 ${isLoading ? 'animate-spin' : ''}`} />
+            </Button>
+
             <Button 
               onClick={handleExportExcel}
               variant="outline"
@@ -247,6 +385,24 @@ export default function TourLeaders() {
           </div>
         </div>
       </div>
+
+      {/* Error Banner if API error */}
+      {errorMsg && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center justify-between gap-3 text-red-800 text-sm">
+          <div className="flex items-center gap-2.5">
+            <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
+            <span>{errorMsg}</span>
+          </div>
+          <Button 
+            onClick={fetchTourLeaders}
+            size="sm"
+            variant="outline"
+            className="border-red-200 text-red-800 hover:bg-red-100 text-xs h-8 px-3 rounded-lg"
+          >
+            Coba Lagi
+          </Button>
+        </div>
+      )}
 
       {/* Metric Cards Grid Container - Interactive Category Filters */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -439,7 +595,7 @@ export default function TourLeaders() {
                   : 'font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50/80'
               }`}
             >
-              <span>Teralokasi Kloter</span>
+              <span>Kloter Dibimbing</span>
               <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold transition-all duration-200 ${
                 activeTab === 'assigned' 
                   ? 'bg-blue-100 text-blue-800 scale-105' 
@@ -451,352 +607,351 @@ export default function TourLeaders() {
                 <span className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-blue-600 rounded-full animate-tab-indicator" />
               )}
             </button>
-
-            <button 
-              onClick={() => { setActiveTab('unassigned'); setCurrentPage(1); }}
-              className={`relative pb-3 pt-2 px-2.5 text-xs sm:text-sm transition-all duration-200 whitespace-nowrap cursor-pointer flex items-center gap-1.5 select-none rounded-t-lg group active:scale-[0.96] ${
-                activeTab === 'unassigned' 
-                  ? 'font-bold text-rose-800' 
-                  : 'font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50/80'
-              }`}
-            >
-              <span>Belum Ditugaskan</span>
-              <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold transition-all duration-200 ${
-                activeTab === 'unassigned' 
-                  ? 'bg-rose-100 text-rose-800 scale-105' 
-                  : 'bg-gray-100 text-gray-600 group-hover:bg-gray-200/80'
-              }`}>
-                {unassignedCount}
-              </span>
-              {activeTab === 'unassigned' && (
-                <span className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-rose-600 rounded-full animate-tab-indicator" />
-              )}
-            </button>
           </div>
         </div>
 
-        {/* Filter Controls Bar */}
-        <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="relative w-full sm:w-96">
-            <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <Input 
-              placeholder="Cari tour leader, ID, no HP, kloter, pengalaman..." 
-              value={searchTerm}
-              onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-              className="pl-9.5 pr-8 h-9.5 rounded-xl border-gray-200 bg-white text-xs sm:text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20"
-            />
-            {searchTerm && (
-              <button 
-                onClick={() => setSearchTerm("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
+        {/* Toolbar Bar - Search, Filter, Sort & Bulk Actions */}
+        <div className="p-4 sm:p-5 bg-white border-b border-gray-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div className="flex flex-1 items-center gap-2.5">
+            <div className="relative flex-1 max-w-md">
+              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Input
+                value={searchTerm}
+                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                placeholder="Cari Tour Leader, ID, WhatsApp, Kloter..."
+                className="pl-10 h-10 text-xs rounded-xl border-gray-200 bg-gray-50/50 focus:bg-white focus:ring-1 focus:ring-emerald-600 focus:border-emerald-600"
+              />
+              {searchTerm && (
+                <button 
+                  onClick={() => setSearchTerm("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
 
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-            {selectedIds.size > 0 && (
-              <Button 
-                onClick={handleDeleteSelected} 
-                variant="outline" 
-                className="text-xs h-9 font-semibold text-red-600 border-red-200 hover:bg-red-50 px-3.5 rounded-xl cursor-pointer"
-              >
-                <Trash2 className="w-3.5 h-3.5 mr-1.5" />
-                Hapus Terpilih ({selectedIds.size})
-              </Button>
-            )}
-
-            <Button 
-              variant={showFilters || hasActiveFilters ? "secondary" : "outline"} 
-              className={`text-xs h-9 font-semibold px-3.5 rounded-xl cursor-pointer ${
-                showFilters || hasActiveFilters 
-                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
-                  : 'border-gray-200 text-gray-700 hover:bg-gray-50'
-              }`} 
+            <Button
               onClick={() => setShowFilters(!showFilters)}
+              variant="outline"
+              className={`h-10 text-xs font-medium border-gray-200 rounded-xl px-3 flex items-center gap-1.5 cursor-pointer ${
+                hasActiveFilters ? 'bg-emerald-50 text-emerald-800 border-emerald-300 font-semibold' : 'bg-white text-gray-700 hover:bg-gray-50'
+              }`}
             >
-              <Filter className="w-3.5 h-3.5 mr-1.5" />
-              Filter Lanjutan
+              <Filter className="w-3.5 h-3.5 text-gray-500" />
+              <span className="hidden sm:inline">Filter</span>
               {hasActiveFilters && (
-                <span className="w-2 h-2 rounded-full bg-emerald-600 ml-1.5"></span>
+                <span className="w-2 h-2 rounded-full bg-emerald-600" />
               )}
             </Button>
           </div>
+
+          <div className="flex items-center justify-between sm:justify-end gap-2.5">
+            {selectedIds.size > 0 && (
+              <Button
+                onClick={handleDeleteSelected}
+                variant="outline"
+                className="h-10 text-xs font-semibold border-red-200 bg-red-50 text-red-700 hover:bg-red-100 rounded-xl px-3 flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                <span>Hapus ({selectedIds.size})</span>
+              </Button>
+            )}
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500 font-medium hidden sm:inline">Urutkan:</span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="h-10 text-xs rounded-xl border border-gray-200 bg-white px-3 font-medium text-gray-700 focus:outline-none focus:ring-1 focus:ring-emerald-600 cursor-pointer"
+              >
+                <option value="newest">Terbaru</option>
+                <option value="name-asc">Nama (A-Z)</option>
+                <option value="name-desc">Nama (Z-A)</option>
+                <option value="id-asc">ID (Asc)</option>
+                <option value="id-desc">ID (Desc)</option>
+              </select>
+            </div>
+          </div>
         </div>
 
-        {/* Extended Filters Panel */}
+        {/* Filter Drawer */}
         {showFilters && (
-          <div className="p-4 border-b border-gray-100 bg-gray-50 flex flex-wrap gap-4 items-end animate-fade-in">
-            <div className="space-y-1.5 w-full sm:w-52">
-              <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Status Penugasan</label>
-              <select 
-                className="flex h-9 w-full rounded-xl border border-gray-200 bg-white px-3 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 cursor-pointer"
+          <div className="bg-gray-50/80 p-4 border-b border-gray-100 animate-fade-in grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-1">
+                Filter Status
+              </label>
+              <select
                 value={filterStatus}
                 onChange={(e) => { setFilterStatus(e.target.value); setCurrentPage(1); }}
+                className="w-full h-9 text-xs rounded-lg border border-gray-200 bg-white px-3 font-medium text-gray-700 focus:ring-1 focus:ring-emerald-600"
               >
                 <option value="">Semua Status</option>
-                <option value="ACTIVE">Aktif Bertugas</option>
+                <option value="ACTIVE">Aktif Membimbing</option>
                 <option value="RESTING">Istirahat / Off</option>
                 <option value="STANDBY">Siaga (Standby)</option>
               </select>
             </div>
 
-            <div className="space-y-1.5 w-full sm:w-56">
-              <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Kloter Bimbingan</label>
-              <select 
-                className="flex h-9 w-full rounded-xl border border-gray-200 bg-white px-3 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 cursor-pointer"
+            <div>
+              <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-1">
+                Filter Kloter
+              </label>
+              <select
                 value={filterGroup}
                 onChange={(e) => { setFilterGroup(e.target.value); setCurrentPage(1); }}
+                className="w-full h-9 text-xs rounded-lg border border-gray-200 bg-white px-3 font-medium text-gray-700 focus:ring-1 focus:ring-emerald-600"
               >
                 <option value="">Semua Kloter</option>
                 {groups.map(g => (
                   <option key={g.id} value={g.name}>{g.name}</option>
                 ))}
-                <option value="Belum Ditugaskan">Belum Ditugaskan</option>
-                <option value="Unassigned">Unassigned</option>
               </select>
             </div>
 
-            <div className="space-y-1.5 w-full sm:w-52">
-              <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Urutan Data</label>
-              <select 
-                className="flex h-9 w-full rounded-xl border border-gray-200 bg-white px-3 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 cursor-pointer"
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as any)}
-              >
-                <option value="newest">Terbaru Ditambahkan</option>
-                <option value="name-asc">Nama Pembimbing (A - Z)</option>
-                <option value="name-desc">Nama Pembimbing (Z - A)</option>
-                <option value="id-asc">ID Tour Leader (Terkecil)</option>
-                <option value="id-desc">ID Tour Leader (Terbesar)</option>
-              </select>
-            </div>
-
-            {hasActiveFilters && (
-              <Button 
-                variant="ghost" 
-                size="sm"
-                className="h-9 text-xs text-gray-500 hover:text-gray-900 rounded-xl cursor-pointer"
+            <div className="flex items-end justify-end">
+              <Button
                 onClick={resetFilters}
+                variant="outline"
+                size="sm"
+                className="h-9 text-xs text-gray-600 border-gray-200 hover:bg-gray-100 rounded-lg px-4 cursor-pointer"
               >
                 Reset Filter
               </Button>
-            )}
+            </div>
           </div>
         )}
 
-        {/* Table View */}
-        <div className="w-full overflow-x-auto touch-pan-x scrollbar-thin">
-          <Table className="min-w-[1050px] w-full">
-            <TableHeader className="bg-gray-50/80">
-              <TableRow className="hover:bg-transparent border-b-gray-200">
-                <TableHead className="w-12 text-center pl-4 py-3 whitespace-nowrap">
-                  <Checkbox 
-                    checked={selectedIds.size > 0 && selectedIds.size === filteredLeaders.length}
-                    onCheckedChange={toggleSelectAll}
-                    aria-label="Pilih semua"
-                  />
-                </TableHead>
-                <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap min-w-[110px]">ID TL</TableHead>
-                <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap min-w-[220px]">Nama Tour Leader</TableHead>
-                <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap min-w-[180px]">Kloter Penugasan</TableHead>
-                <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap min-w-[160px]">Pengalaman</TableHead>
-                <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap min-w-[160px]">Status Penugasan</TableHead>
-                <TableHead className="text-right pr-6 text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap min-w-[110px]">Aksi</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody key={activeTab} className="animate-fade-in">
-              {paginatedData.map((leader) => {
-                const isSelected = selectedIds.has(leader.id);
-                const assigned = isAssigned(leader);
-
-                return (
-                  <TableRow 
-                    key={leader.id} 
-                    className={`${isSelected ? "bg-emerald-50/40" : ""} hover:bg-gray-50/80 transition-colors group cursor-pointer`}
-                    onClick={(e) => {
-                      if ((e.target as HTMLElement).closest('input[type="checkbox"], button')) return;
-                      openDetailModal(leader);
-                    }}
-                  >
-                    <TableCell className="pl-4 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                      <Checkbox 
-                        checked={isSelected}
-                        onCheckedChange={() => toggleSelect(leader.id)}
-                        aria-label={`Pilih ${leader.name}`}
-                      />
-                    </TableCell>
-
-                    {/* ID TL */}
-                    <TableCell className="py-4 whitespace-nowrap">
-                      <div className="font-bold text-sm tracking-tight text-[#480c0c] whitespace-nowrap">
-                        {leader.id}
-                      </div>
-                    </TableCell>
-
-                    {/* Nama Tour Leader */}
-                    <TableCell className="py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center font-bold text-emerald-800 text-xs shrink-0 border border-emerald-200">
-                          {leader.name
-                            .split(' ')
-                            .filter(Boolean)
-                            .map(n => n[0])
-                            .join('')
-                            .substring(0, 2)
-                            .toUpperCase()}
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="font-bold text-gray-900 text-sm whitespace-nowrap">{leader.name}</span>
-                          <span className="text-xs text-gray-500 mt-0.5 font-medium whitespace-nowrap flex items-center gap-1">
-                            <Phone className="w-3 h-3 text-gray-400" />
-                            {leader.phone || '0812-3456-7890'}
-                          </span>
-                        </div>
-                      </div>
-                    </TableCell>
-
-                    {/* Kloter Penugasan */}
-                    <TableCell className="py-4 whitespace-nowrap">
-                      {assigned ? (
-                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold text-[#782820] bg-[#fcedea] border border-[#f5d0cb] shadow-2xs tracking-wide uppercase">
-                          {leader.group}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-gray-400 italic font-medium">
-                          Belum Ditugaskan
-                        </span>
-                      )}
-                    </TableCell>
-
-                    {/* Pengalaman */}
-                    <TableCell className="py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        <Award className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                        <span className="text-xs font-semibold text-gray-800">
-                          {leader.experience || leader.performance || '5 Tahun'}
-                        </span>
-                      </div>
-                    </TableCell>
-
-                    {/* Status Penugasan */}
-                    <TableCell className="py-4 whitespace-nowrap">
-                      {leader.status === 'Active' || leader.status === 'Aktif' ? (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-300 shadow-2xs">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                          Aktif Bertugas
-                        </span>
-                      ) : leader.status === 'Resting' || leader.status === 'Istirahat' ? (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-800 bg-amber-50 px-3 py-1 rounded-full border border-amber-300 shadow-2xs">
-                          <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                          Istirahat / Off
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-800 bg-blue-50 px-3 py-1 rounded-full border border-blue-300 shadow-2xs">
-                          <Clock className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                          Siaga (Standby)
-                        </span>
-                      )}
-                    </TableCell>
-
-                    {/* Aksi */}
-                    <TableCell className="text-right pr-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1.5 whitespace-nowrap shrink-0">
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="w-8 h-8 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg cursor-pointer transition-colors shrink-0" 
-                          title="Lihat Data Pembimbing"
-                          onClick={() => openDetailModal(leader)}
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="w-8 h-8 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg cursor-pointer transition-colors shrink-0" 
-                          title="Edit Tour Leader"
-                          onClick={() => openEditModal(leader)}
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="w-8 h-8 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg cursor-pointer transition-colors shrink-0" 
-                          title="Hapus Data"
-                          onClick={() => {
-                            setSelectedIds(new Set([leader.id]));
-                            setIsDeleteDialogOpen(true);
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-
-              {filteredLeaders.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7} className="h-56 text-center">
-                    <div className="flex flex-col items-center justify-center text-gray-500">
-                      <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center mb-3 border border-gray-200">
-                        <Users className="w-5 h-5 text-gray-400" />
-                      </div>
-                      <p className="font-semibold text-gray-900">Tidak ada data Tour Leader ditemukan</p>
-                      <p className="text-xs text-gray-500 mt-1 max-w-sm">
-                        Ubah filter pencarian atau gunakan tombol tambah untuk mendaftarkan tour leader baru.
-                      </p>
-                      {hasActiveFilters && (
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          className="mt-3 text-xs rounded-xl cursor-pointer"
-                          onClick={resetFilters}
-                        >
-                          Reset Semua Filter
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
+        {/* Data Table */}
+        <div className="overflow-x-auto min-h-[320px]">
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-20 text-gray-500 space-y-3">
+              <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
+              <p className="text-xs font-semibold">Memuat data Tour Leader dari server...</p>
+            </div>
+          ) : filteredLeaders.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-gray-500 space-y-3">
+              <Users className="w-10 h-10 text-gray-300" />
+              <p className="text-sm font-bold text-gray-700">Tidak ada data Tour Leader</p>
+              <p className="text-xs text-gray-500 max-w-sm text-center">
+                {searchTerm || hasActiveFilters
+                  ? "Tidak ditemukan data yang cocok dengan kriteria pencarian/filter Anda."
+                  : "Belum ada data Tour Leader yang tersimpan di sistem."}
+              </p>
+              {hasActiveFilters && (
+                <Button onClick={resetFilters} variant="outline" size="sm" className="mt-2 text-xs rounded-xl">
+                  Reset Filter
+                </Button>
               )}
-            </TableBody>
-          </Table>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-gray-50/60 hover:bg-gray-50/60 border-gray-100">
+                  <TableHead className="w-12 text-center">
+                    <Checkbox
+                      checked={selectedIds.size === filteredLeaders.length && filteredLeaders.length > 0}
+                      onCheckedChange={toggleSelectAll}
+                      aria-label="Pilih semua"
+                    />
+                  </TableHead>
+                  <TableHead className="text-xs font-bold text-gray-700 uppercase tracking-wider py-3.5">
+                    Tour Leader & ID
+                  </TableHead>
+                  <TableHead className="text-xs font-bold text-gray-700 uppercase tracking-wider py-3.5">
+                    No. Kontak / WA
+                  </TableHead>
+                  <TableHead className="text-xs font-bold text-gray-700 uppercase tracking-wider py-3.5">
+                    Kloter Penugasan
+                  </TableHead>
+                  <TableHead className="text-xs font-bold text-gray-700 uppercase tracking-wider py-3.5">
+                    Pengalaman
+                  </TableHead>
+                  <TableHead className="text-xs font-bold text-gray-700 uppercase tracking-wider py-3.5">
+                    Status Kesiapan
+                  </TableHead>
+                  <TableHead className="text-xs font-bold text-gray-700 uppercase tracking-wider py-3.5 text-right pr-6">
+                    Aksi
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paginatedData.map((leader) => {
+                  const itemKey = leader.backendId || leader.id;
+                  const isSelected = selectedIds.has(itemKey);
+                  const leaderKloters = leader.kloters && leader.kloters.length > 0
+                    ? leader.kloters
+                    : (leader.group && leader.group !== 'Belum Ditugaskan' && leader.group !== 'Unassigned' ? [{ id: '1', name: leader.group }] : []);
+
+                  return (
+                    <TableRow 
+                      key={itemKey}
+                      className={`border-gray-100 transition-colors hover:bg-gray-50/80 ${
+                        isSelected ? 'bg-emerald-50/40' : ''
+                      }`}
+                    >
+                      <TableCell className="text-center">
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => toggleSelect(itemKey)}
+                          aria-label={`Pilih ${leader.name}`}
+                        />
+                      </TableCell>
+
+                      <TableCell className="py-3.5">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-emerald-100/70 text-emerald-800 font-bold flex items-center justify-center text-xs shrink-0 shadow-2xs">
+                            {leader.name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="text-xs sm:text-sm font-bold text-gray-900 leading-tight">
+                              {leader.name}
+                            </p>
+                            <p className="text-[11px] font-mono text-gray-500 mt-0.5">
+                              {leader.loginId || leader.id}
+                            </p>
+                          </div>
+                        </div>
+                      </TableCell>
+
+                      <TableCell className="py-3.5">
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-800">
+                          <Phone className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                          <span>{leader.phone || '-'}</span>
+                        </div>
+                      </TableCell>
+
+                      <TableCell className="py-3.5">
+                        {leaderKloters.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {leaderKloters.map((k, idx) => (
+                              <span 
+                                key={k.id || idx}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200/60"
+                              >
+                                <Briefcase className="w-3 h-3 text-blue-600 shrink-0" />
+                                <span>{k.name}</span>
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-gray-100 text-gray-600">
+                            Belum Ditugaskan
+                          </span>
+                        )}
+                      </TableCell>
+
+                      <TableCell className="py-3.5">
+                        <div className="text-xs text-gray-700 font-medium">
+                          <p className="font-semibold text-gray-900">{leader.experience || '-'}</p>
+                          {leader.performance && (
+                            <p className="text-[11px] text-gray-500 truncate max-w-[160px]">{leader.performance}</p>
+                          )}
+                        </div>
+                      </TableCell>
+
+                      <TableCell className="py-3.5">
+                        {leader.status === 'Active' || leader.status === 'Aktif' ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+                            Aktif Membimbing
+                          </span>
+                        ) : leader.status === 'Resting' || leader.status === 'Istirahat' ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-600" />
+                            Istirahat / Off
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />
+                            Siaga (Standby)
+                          </span>
+                        )}
+                      </TableCell>
+
+                      <TableCell className="py-3.5 text-right pr-6">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => openDetailModal(leader)}
+                            className="p-1.5 text-gray-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                            title="Detail Data Diri & Penugasan"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => openEditModal(leader)}
+                            className="p-1.5 text-gray-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                            title="Edit Data Tour Leader"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedIds(new Set([itemKey]));
+                              setIsDeleteDialogOpen(true);
+                            }}
+                            className="p-1.5 text-gray-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                            title="Hapus Tour Leader"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
         </div>
 
-        {/* Pagination Footer - Identical to Registration */}
-        <div className="p-4 border-t border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <span className="text-xs text-gray-500">
-            Menampilkan <span className="font-semibold text-gray-900">{filteredLeaders.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0}</span> - <span className="font-semibold text-gray-900">{Math.min(currentPage * itemsPerPage, filteredLeaders.length)}</span> dari <span className="font-semibold text-gray-900">{filteredLeaders.length}</span> pembimbing
-          </span>
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="text-xs h-8 rounded-lg border-gray-200 text-gray-700 flex-1 sm:flex-none cursor-pointer" 
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))} 
-              disabled={currentPage === 1}
-            >
-              Sebelumnya
-            </Button>
-            <span className="text-xs font-medium text-gray-600 px-2">
-              Hal {currentPage} / {totalPages}
-            </span>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="text-xs h-8 rounded-lg border-gray-200 text-gray-700 flex-1 sm:flex-none cursor-pointer" 
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} 
-              disabled={currentPage === totalPages}
-            >
-              Selanjutnya
-            </Button>
+        {/* Table Footer with Pagination */}
+        {!isLoading && filteredLeaders.length > 0 && (
+          <div className="p-4 bg-white border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-500 font-medium">
+            <div>
+              Menampilkan {Math.min((currentPage - 1) * itemsPerPage + 1, filteredLeaders.length)} hingga {Math.min(currentPage * itemsPerPage, filteredLeaders.length)} dari {filteredLeaders.length} data
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="h-8 text-xs font-semibold border-gray-200 rounded-lg px-3 cursor-pointer disabled:opacity-50"
+              >
+                Sebelumnya
+              </Button>
+
+              <div className="flex items-center gap-1 px-2">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setCurrentPage(p)}
+                    className={`w-7 h-7 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                      currentPage === p 
+                        ? 'bg-emerald-600 text-white' 
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="h-8 text-xs font-semibold border-gray-200 rounded-lg px-3 cursor-pointer disabled:opacity-50"
+              >
+                Selanjutnya
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
       </Card>
 
       {/* Modal Dialog for Data Diri & Form Edit - Matches Registration Reference Design */}
@@ -852,7 +1007,9 @@ export default function TourLeaders() {
           {/* TAB 1: DATA DIRI DETAIL */}
           {modalMode === 'detail' && (() => {
             const activeLeader = editingLeader || (formData.name ? (formData as TourLeader) : tourLeaders[0]);
-            const matchedGroup = groups.find(g => g.name === activeLeader?.group);
+            const activeKloters = activeLeader?.kloters && activeLeader.kloters.length > 0
+              ? activeLeader.kloters
+              : (activeLeader?.group && activeLeader.group !== 'Belum Ditugaskan' ? [{ id: '1', name: activeLeader.group }] : []);
 
             return (
               <div className="space-y-7 animate-fade-in">
@@ -878,8 +1035,8 @@ export default function TourLeaders() {
                         <Compass className="w-4 h-4 text-[#782820] shrink-0" />
                         <span>ID Tour Leader</span>
                       </div>
-                      <span className="font-bold text-gray-900 text-sm text-right">
-                        {activeLeader?.id || 'TL-001'}
+                      <span className="font-bold text-gray-900 text-sm text-right font-mono">
+                        {activeLeader?.loginId || activeLeader?.id || 'TL-001'}
                       </span>
                     </div>
 
@@ -921,52 +1078,73 @@ export default function TourLeaders() {
                   </div>
                 </div>
 
-                {/* Card 2: Rincian Penugasan Kloter */}
+                {/* Card 2: Rincian Penugasan Kloter (Multiple Kloter Support) */}
                 <div>
                   <h2 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight mb-3">
                     Rincian Penugasan Kloter
                   </h2>
 
-                  <div className="bg-white border border-[#cbd5e1] rounded-3xl overflow-hidden divide-y divide-[#e2e8f0] shadow-2xs">
-                    <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
-                      <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
-                        <Briefcase className="w-4 h-4 text-[#782820] shrink-0" />
-                        <span>Kloter Bimbingan Saat Ini</span>
-                      </div>
-                      <span className="font-bold text-gray-900 text-sm text-right">
-                        {activeLeader?.group || 'Group A-1'}
-                      </span>
+                  <div className="bg-white border border-[#cbd5e1] rounded-3xl p-5 shadow-2xs space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-600 uppercase tracking-wider block">
+                        Daftar Kloter Bimbingan ({activeKloters.length})
+                      </label>
+                      {activeKloters.length > 0 ? (
+                        <div className="space-y-2">
+                          {activeKloters.map((k) => (
+                            <div key={k.id} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-2xl p-3.5">
+                              <div className="flex items-center gap-3">
+                                <Briefcase className="w-4 h-4 text-blue-600" />
+                                <div>
+                                  <p className="text-sm font-bold text-gray-900">{k.name}</p>
+                                  {k.code && <p className="text-[11px] font-mono text-gray-500">{k.code}</p>}
+                                </div>
+                              </div>
+                              {activeLeader?.backendId && k.id && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={isAssigningKloter}
+                                  onClick={() => handleUnassignKloterFromLeader(activeLeader.backendId, k.id)}
+                                  className="text-xs border-red-200 text-red-700 hover:bg-red-50 rounded-xl h-8 px-3 cursor-pointer"
+                                >
+                                  Lepas Kloter
+                                </Button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-gray-500 italic p-3 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                          Belum ada Kloter yang ditugaskan ke Tour Leader ini.
+                        </div>
+                      )}
                     </div>
 
-                    <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
-                      <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
-                        <Users className="w-4 h-4 text-[#782820] shrink-0" />
-                        <span>Estimasi Jamaah Kloter</span>
+                    {/* Quick Assign Kloter Form in Detail View */}
+                    {activeLeader?.backendId && (
+                      <div className="pt-3 border-t border-gray-100 flex items-center gap-2">
+                        <select
+                          value={selectedKloterToAssign}
+                          onChange={(e) => setSelectedKloterToAssign(e.target.value)}
+                          className="flex-1 h-10 text-xs rounded-xl border border-gray-300 bg-white px-3 font-semibold text-gray-800"
+                        >
+                          <option value="">-- Pilih Kloter Tambahan --</option>
+                          {groups.map(g => (
+                            <option key={g.id} value={g.backendId || g.id}>{g.name} ({g.kloter || g.id})</option>
+                          ))}
+                        </select>
+                        <Button
+                          size="sm"
+                          disabled={!selectedKloterToAssign || isAssigningKloter}
+                          onClick={() => handleAssignKloterToLeader(activeLeader.backendId, selectedKloterToAssign)}
+                          className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold h-10 px-4 rounded-xl cursor-pointer"
+                        >
+                          {isAssigningKloter ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-4 h-4 mr-1" />}
+                          Tugaskan
+                        </Button>
                       </div>
-                      <span className="font-bold text-gray-900 text-sm text-right">
-                        {matchedGroup?.pilgrims ? `${matchedGroup.pilgrims} Jamaah` : '45 Jamaah'}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
-                      <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
-                        <Sparkles className="w-4 h-4 text-[#782820] shrink-0" />
-                        <span>Partner Muthawwif Lokal</span>
-                      </div>
-                      <span className="font-bold text-gray-900 text-sm text-right">
-                        {matchedGroup?.mutawif || 'Syeikh Ammar'}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
-                      <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
-                        <Calendar className="w-4 h-4 text-[#782820] shrink-0" />
-                        <span>Catatan Performa / Review</span>
-                      </div>
-                      <span className="font-bold text-gray-900 text-sm text-right">
-                        {activeLeader?.performance || 'Sangat Disiplin & Menguasai Manasik'}
-                      </span>
-                    </div>
+                    )}
                   </div>
                 </div>
 
@@ -984,7 +1162,7 @@ export default function TourLeaders() {
             );
           })()}
 
-          {/* TAB 2: FORM EDIT (Exact Match to Registration Form Style) */}
+          {/* TAB 2: FORM EDIT */}
           {modalMode === 'edit' && (
             <div className="space-y-6 animate-fade-in">
               {/* Section 1: INFORMASI PRIBADI & KUALIFIKASI */}
@@ -1006,8 +1184,8 @@ export default function TourLeaders() {
                     </label>
                     <div className="sm:col-span-8">
                       <Input 
-                        value={formData.id || ''} 
-                        onChange={(e) => setFormData({ ...formData, id: e.target.value })} 
+                        value={formData.loginId || formData.id || ''} 
+                        onChange={(e) => setFormData({ ...formData, loginId: e.target.value, id: e.target.value })} 
                         placeholder="Cth. TL-001" 
                         className="h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base font-bold text-gray-900 placeholder:text-gray-400 placeholder:font-normal px-4 sm:px-5 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859]"
                       />
@@ -1067,7 +1245,7 @@ export default function TourLeaders() {
                     <div className="sm:col-span-8">
                       <select
                         value={formData.status || 'Active'}
-                        onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
+                        onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                         className="h-12 sm:h-13 w-full rounded-2xl border border-gray-300 bg-white px-4 sm:px-5 text-base font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859] cursor-pointer"
                       >
                         <option value="Active">Aktif Membimbing</option>
@@ -1094,18 +1272,17 @@ export default function TourLeaders() {
                   {/* KLOTER BIMBINGAN */}
                   <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
                     <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                      KLOTER BIMBINGAN *
+                      TAMBAH PENUGASAN KLOTER
                     </label>
                     <div className="sm:col-span-8">
                       <select
-                        value={formData.group || 'Belum Ditugaskan'}
-                        onChange={(e) => setFormData({ ...formData, group: e.target.value })}
+                        value={selectedKloterToAssign}
+                        onChange={(e) => setSelectedKloterToAssign(e.target.value)}
                         className="h-12 sm:h-13 w-full rounded-2xl border border-gray-300 bg-white px-4 sm:px-5 text-base font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859] cursor-pointer"
                       >
-                        <option value="Belum Ditugaskan">-- Belum Ditugaskan --</option>
-                        <option value="Group A-1">Group A-1</option>
+                        <option value="">-- Pilih Kloter untuk Ditugaskan --</option>
                         {groups.map(g => (
-                          <option key={g.id} value={g.name}>{g.name} ({g.kloter || g.id})</option>
+                          <option key={g.id} value={g.backendId || g.id}>{g.name} ({g.kloter || g.id})</option>
                         ))}
                       </select>
                     </div>
@@ -1132,6 +1309,7 @@ export default function TourLeaders() {
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
                 <Button 
                   variant="outline" 
+                  disabled={isSaving}
                   onClick={() => setIsModalOpen(false)} 
                   className="h-12 rounded-2xl px-7 font-bold text-gray-800 border-gray-300 hover:bg-gray-50 text-base cursor-pointer shadow-2xs"
                 >
@@ -1139,9 +1317,11 @@ export default function TourLeaders() {
                 </Button>
                 <Button 
                   onClick={saveLeader} 
-                  className="h-12 rounded-2xl px-8 font-bold text-white bg-[#00a859] hover:bg-[#008f4c] text-base cursor-pointer shadow-2xs"
+                  disabled={isSaving}
+                  className="h-12 rounded-2xl px-8 font-bold text-white bg-[#00a859] hover:bg-[#008f4c] text-base cursor-pointer shadow-2xs flex items-center gap-2"
                 >
-                  {editingLeader ? 'Simpan Perubahan' : 'Simpan Tour Leader'}
+                  {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+                  <span>{editingLeader ? 'Simpan Perubahan' : 'Simpan Tour Leader'}</span>
                 </Button>
               </div>
             </div>
