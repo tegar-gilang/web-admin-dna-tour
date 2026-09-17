@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
@@ -17,6 +17,7 @@ import { ConfirmDeleteDialog } from '@/components/ui/ConfirmDeleteDialog';
 import { exportToExcel } from '@/lib/export';
 import { toast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
+import stockService, { StockTransaction } from '@/core/services/stockService';
 
 export default function StaffStock() {
 
@@ -25,7 +26,27 @@ export default function StaffStock() {
 // Komponen utama untuk fitur STAFFSTOCK
 // ==========================================
 
-  const { staffStocks, addStaffStock, updateStaffStock, deleteStaffStock, deleteStaffStocks, adjustStockQuantity } = useStore();
+  const { staffStocks, setStaffStocks } = useStore();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  const fetchStocks = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const data = await stockService.getStocks();
+      setStaffStocks(data as any);
+    } catch (err: any) {
+      setError(err.message || 'Gagal memuat data stok');
+      toast('Gagal memuat data stok dari server', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchStocks();
+  }, []);
   const [searchTerm, setSearchTerm] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -39,9 +60,26 @@ export default function StaffStock() {
 
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState<'detail' | 'edit'>('detail');
+  const [modalMode, setModalMode] = useState<'detail' | 'edit' | 'history'>('detail');
   const [selectedItem, setSelectedItem] = useState<StaffStockItem | null>(null);
   const [formData, setFormData] = useState<Partial<StaffStockItem>>({});
+  
+  const [transactions, setTransactions] = useState<StockTransaction[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
+  const fetchHistory = async (id: string) => {
+    try {
+      setIsLoadingHistory(true);
+      setHistoryError(null);
+      const data = await stockService.getStockTransactions(id);
+      setTransactions(data);
+    } catch (err: any) {
+      setHistoryError(err.message || 'Gagal memuat riwayat transaksi');
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
 
   // Quick adjust modal
   const [adjustModalItem, setAdjustModalItem] = useState<StaffStockItem | null>(null);
@@ -112,15 +150,24 @@ export default function StaffStock() {
     setIsDeleteDialogOpen(true);
   };
 
-  const confirmDelete = () => {
-    if (deleteItemId) {
-      deleteStaffStock(deleteItemId);
-      setDeleteItemId(null);
-      toast("Data stok berhasil dihapus.", "success");
-    } else {
-      deleteStaffStocks(Array.from(selectedIds));
-      setSelectedIds(new Set());
-      toast("Data stok berhasil dihapus.", "success");
+  const confirmDelete = async () => {
+    try {
+      setIsLoading(true);
+      if (deleteItemId) {
+        await stockService.deleteStock(deleteItemId);
+        setDeleteItemId(null);
+        toast("Data stok berhasil dihapus.", "success");
+      } else {
+        // Lakukan penghapusan jamak secara berurutan atau Promise.all
+        await Promise.all(Array.from(selectedIds).map(id => stockService.deleteStock(id)));
+        setSelectedIds(new Set());
+        toast("Data stok berhasil dihapus.", "success");
+      }
+      await fetchStocks();
+    } catch (err: any) {
+      toast(err.message || "Gagal menghapus data stok.", "error");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -153,7 +200,7 @@ export default function StaffStock() {
     setIsModalOpen(true);
   };
 
-  const handleSaveItem = () => {
+  const handleSaveItem = async () => {
     if (!formData.name?.trim()) {
       toast("Nama barang wajib diisi.", "error");
       return;
@@ -162,49 +209,78 @@ export default function StaffStock() {
     const qty = Number(formData.quantity) >= 0 ? Number(formData.quantity) : 0;
     const minStk = Number(formData.minStock) >= 0 ? Number(formData.minStock) : 0;
 
-    if (selectedItem) {
-      updateStaffStock(selectedItem.id, {
-        name: formData.name,
-        category: formData.category || 'Lainnya',
-        quantity: qty,
-        minStock: minStk,
-        unit: formData.unit || 'Pcs',
-        location: formData.location || 'Gudang Utama',
-        notes: formData.notes || '',
-      });
-      toast("Data barang berhasil diperbarui.", "success");
-    } else {
-      addStaffStock({
-        id: `STK-${Date.now().toString().slice(-4)}`,
-        name: formData.name,
-        category: formData.category || 'Perlengkapan Jamaah',
-        quantity: qty,
-        minStock: minStk,
-        unit: formData.unit || 'Pcs',
-        location: formData.location || 'Gudang Utama',
-        lastUpdated: new Date().toISOString().split('T')[0],
-        notes: formData.notes || '',
-      });
-      toast("Barang baru berhasil ditambahkan ke stok.", "success");
-    }
-    setIsModalOpen(false);
-  };
-
-  const handleQuickAdjust = (id: string, delta: number, itemName: string) => {
-    adjustStockQuantity(id, delta);
-    if (delta > 0) {
-      toast(`Stok "${itemName}" ditambah +${delta}`, "success");
-    } else {
-      toast(`Stok "${itemName}" dikurangi ${delta}`, "info");
+    try {
+      setIsLoading(true);
+      if (selectedItem) {
+        await stockService.updateStock(selectedItem.id, {
+          name: formData.name,
+          category: formData.category || 'Lainnya',
+          quantity: qty,
+          min_stock: minStk,
+          unit: formData.unit || 'Pcs',
+          location: formData.location || 'Gudang Utama',
+          notes: formData.notes || '',
+        });
+        toast("Data barang berhasil diperbarui.", "success");
+      } else {
+        await stockService.createStock({
+          name: formData.name,
+          category: formData.category || 'Perlengkapan Jamaah',
+          quantity: qty,
+          min_stock: minStk,
+          unit: formData.unit || 'Pcs',
+          location: formData.location || 'Gudang Utama',
+          notes: formData.notes || '',
+        });
+        toast("Barang baru berhasil ditambahkan ke stok.", "success");
+      }
+      await fetchStocks();
+      setIsModalOpen(false);
+    } catch (err: any) {
+      toast(err.message || "Gagal menyimpan data barang.", "error");
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleSaveAdjustModal = () => {
+  const handleQuickAdjust = async (id: string, delta: number, itemName: string, currentQuantity: number) => {
+    const newQuantity = currentQuantity + delta;
+    if (newQuantity < 0) return;
+    try {
+      setIsLoading(true);
+      await stockService.adjustStock(id, newQuantity);
+      if (delta > 0) {
+        toast(`Stok "${itemName}" ditambah +${delta}`, "success");
+      } else {
+        toast(`Stok "${itemName}" dikurangi ${Math.abs(delta)}`, "info");
+      }
+      await fetchStocks();
+    } catch (err: any) {
+      toast(err.message || "Gagal mengubah kuantitas stok", "error");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSaveAdjustModal = async () => {
     if (!adjustModalItem) return;
     const finalDelta = adjustAction === 'add' ? adjustDelta : -adjustDelta;
-    adjustStockQuantity(adjustModalItem.id, finalDelta);
-    toast(`Stok "${adjustModalItem.name}" berhasil disesuaikan (${adjustAction === 'add' ? '+' : '-'}${adjustDelta}).`, "success");
-    setAdjustModalItem(null);
+    const newQuantity = adjustModalItem.quantity + finalDelta;
+    if (newQuantity < 0) {
+      toast("Stok tidak bisa negatif", "error");
+      return;
+    }
+    try {
+      setIsLoading(true);
+      await stockService.adjustStock(adjustModalItem.id, newQuantity);
+      toast(`Stok "${adjustModalItem.name}" berhasil disesuaikan (${adjustAction === 'add' ? '+' : '-'}${adjustDelta}).`, "success");
+      await fetchStocks();
+      setAdjustModalItem(null);
+    } catch (err: any) {
+      toast(err.message || "Gagal mengubah kuantitas stok", "error");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleExportExcel = () => {
@@ -622,7 +698,7 @@ export default function StaffStock() {
                         <div className="flex items-center justify-center gap-1.5">
                           <button 
                             type="button"
-                            onClick={() => handleQuickAdjust(item.id, -1, item.name)}
+                            onClick={() => handleQuickAdjust(item.id, -1, item.name, item.quantity)}
                             disabled={item.quantity <= 0}
                             className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-150 active:scale-90 disabled:opacity-20 disabled:hover:bg-transparent disabled:hover:text-gray-400 cursor-pointer disabled:cursor-not-allowed"
                             title="Kurangi 1 unit"
@@ -640,7 +716,7 @@ export default function StaffStock() {
 
                           <button 
                             type="button"
-                            onClick={() => handleQuickAdjust(item.id, 1, item.name)}
+                            onClick={() => handleQuickAdjust(item.id, 1, item.name, item.quantity)}
                             className="p-1 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-150 active:scale-90 cursor-pointer"
                             title="Tambah 1 unit"
                           >
@@ -774,7 +850,7 @@ export default function StaffStock() {
                   <button
                     type="button"
                     onClick={() => setModalMode('detail')}
-                    className={`px-6 py-2.5 rounded-full text-sm sm:text-base font-bold transition-all duration-200 cursor-pointer active:scale-95 select-none ${
+                    className={`px-4 sm:px-6 py-2.5 rounded-full text-sm sm:text-base font-bold transition-all duration-200 cursor-pointer active:scale-95 select-none ${
                       modalMode === 'detail'
                         ? 'bg-[#00a859] text-white shadow-xs'
                         : 'bg-white text-gray-800 border border-gray-300 hover:bg-gray-50'
@@ -784,8 +860,19 @@ export default function StaffStock() {
                   </button>
                   <button
                     type="button"
+                    onClick={() => { setModalMode('history'); if(selectedItem) fetchHistory(selectedItem.id); }}
+                    className={`px-4 sm:px-6 py-2.5 rounded-full text-sm sm:text-base font-bold transition-all duration-200 cursor-pointer active:scale-95 select-none ${
+                      modalMode === 'history'
+                        ? 'bg-[#00a859] text-white shadow-xs'
+                        : 'bg-white text-gray-800 border border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    Riwayat
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setModalMode('edit')}
-                    className={`px-6 py-2.5 rounded-full text-sm sm:text-base font-bold transition-all duration-200 cursor-pointer active:scale-95 select-none ${
+                    className={`px-4 sm:px-6 py-2.5 rounded-full text-sm sm:text-base font-bold transition-all duration-200 cursor-pointer active:scale-95 select-none ${
                       modalMode === 'edit'
                         ? 'bg-[#00a859] text-white shadow-xs'
                         : 'bg-white text-gray-800 border border-gray-300 hover:bg-gray-50'
@@ -1112,6 +1199,58 @@ export default function StaffStock() {
                   {selectedItem ? 'Simpan Perubahan' : 'Simpan Data Barang'}
                 </Button>
               </div>
+            </div>
+          )}
+          {/* TAB 3: RIWAYAT TRANSAKSI */}
+          {modalMode === 'history' && (
+            <div className="space-y-6 animate-fade-in text-left">
+              <h2 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight mb-3">
+                Riwayat Transaksi Stok
+              </h2>
+              {isLoadingHistory ? (
+                <div className="py-12 flex justify-center items-center">
+                  <RefreshCw className="w-8 h-8 text-emerald-500 animate-spin" />
+                </div>
+              ) : historyError ? (
+                <div className="py-12 flex flex-col items-center justify-center text-red-500">
+                  <AlertTriangle className="w-10 h-10 mb-2" />
+                  <p>{historyError}</p>
+                </div>
+              ) : transactions.length === 0 ? (
+                <div className="py-12 flex flex-col items-center justify-center text-gray-500">
+                  <Boxes className="w-10 h-10 mb-2 text-gray-300" />
+                  <p>Belum ada riwayat transaksi</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto border border-gray-200 rounded-2xl">
+                  <Table className="min-w-full">
+                    <TableHeader className="bg-gray-50">
+                      <TableRow>
+                        <TableHead className="text-xs font-bold text-gray-500">Tanggal</TableHead>
+                        <TableHead className="text-xs font-bold text-gray-500">Jenis</TableHead>
+                        <TableHead className="text-xs font-bold text-gray-500">Kuantitas</TableHead>
+                        <TableHead className="text-xs font-bold text-gray-500">Sblm &rarr; Ssdh</TableHead>
+                        <TableHead className="text-xs font-bold text-gray-500">Catatan</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {transactions.map(trx => (
+                        <TableRow key={trx.id}>
+                          <TableCell className="text-xs text-gray-700 whitespace-nowrap">{new Date(trx.createdAt).toLocaleString('id-ID')}</TableCell>
+                          <TableCell className="text-xs">
+                            <Badge variant={trx.type.includes('add') || trx.type === 'in' ? 'success' : trx.type.includes('sub') || trx.type === 'out' ? 'warning' : 'default'} className="shadow-2xs">
+                              {trx.type}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-xs font-bold">{trx.quantity}</TableCell>
+                          <TableCell className="text-xs text-gray-500">{trx.beforeQuantity} &rarr; {trx.afterQuantity}</TableCell>
+                          <TableCell className="text-xs text-gray-500 max-w-[200px] truncate" title={trx.notes || ''}>{trx.notes || '-'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </div>
           )}
         </DialogContent>

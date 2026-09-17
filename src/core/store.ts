@@ -203,15 +203,15 @@ export type RoomItem = {
 };
 export type StaffStockItem = {
   id: string;
-
+  code: string;
   name: string;
   category: string;
   quantity: number;
   minStock: number;
   unit: string;
-  location?: string;
-  lastUpdated?: string;
-  notes?: string;
+  location: string | null;
+  lastUpdated: string;
+  notes: string | null;
 };
 
 
@@ -320,6 +320,7 @@ type StoreState = {
   deleteStaffStock: (id: string) => void;
   deleteStaffStocks: (ids: string[]) => void;
   adjustStockQuantity: (id: string, delta: number) => void;
+  setStaffStocks: (items: StaffStockItem[]) => void;
 
   // Finance actions
   addTransaction: (tx: FinanceTransaction) => void;
@@ -1589,6 +1590,7 @@ export const useStore = create<StoreState>((set) => ({
       return item;
     })
   })),
+  setStaffStocks: (items) => set({ staffStocks: items }),
 
   // Finance actions
   addTransaction: (tx) => set((state) => {
