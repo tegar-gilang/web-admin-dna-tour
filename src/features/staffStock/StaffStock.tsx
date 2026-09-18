@@ -699,9 +699,9 @@ export default function StaffStock() {
                           <button 
                             type="button"
                             onClick={() => handleQuickAdjust(item.id, -1, item.name, item.quantity)}
-                            disabled={item.quantity <= 0}
+                            disabled={item.quantity <= 0 || item.hasSizes}
                             className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-150 active:scale-90 disabled:opacity-20 disabled:hover:bg-transparent disabled:hover:text-gray-400 cursor-pointer disabled:cursor-not-allowed"
-                            title="Kurangi 1 unit"
+                            title={item.hasSizes ? "Item dengan ukuran tidak bisa di-adjust cepat" : "Kurangi 1 unit"}
                           >
                             <MinusCircle className="w-4 h-4" />
                           </button>
@@ -717,8 +717,9 @@ export default function StaffStock() {
                           <button 
                             type="button"
                             onClick={() => handleQuickAdjust(item.id, 1, item.name, item.quantity)}
-                            className="p-1 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-150 active:scale-90 cursor-pointer"
-                            title="Tambah 1 unit"
+                            disabled={item.hasSizes}
+                            className="p-1 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-150 active:scale-90 disabled:opacity-20 disabled:hover:bg-transparent disabled:hover:text-gray-400 cursor-pointer disabled:cursor-not-allowed"
+                            title={item.hasSizes ? "Item dengan ukuran tidak bisa di-adjust cepat" : "Tambah 1 unit"}
                           >
                             <PlusCircle className="w-4 h-4" />
                           </button>

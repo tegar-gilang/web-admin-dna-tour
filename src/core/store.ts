@@ -212,6 +212,7 @@ export type StaffStockItem = {
   location: string | null;
   lastUpdated: string;
   notes: string | null;
+  hasSizes?: boolean;
 };
 
 

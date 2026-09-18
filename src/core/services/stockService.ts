@@ -11,6 +11,7 @@ export interface BackendStock {
   location: string | null;
   updated_at: string;
   notes: string | null;
+  has_sizes?: boolean;
 }
 
 export interface Stock {
@@ -24,6 +25,7 @@ export interface Stock {
   location: string | null;
   lastUpdated: string;
   notes: string | null;
+  hasSizes?: boolean;
 }
 
 export interface StockTransaction {
@@ -60,6 +62,7 @@ export const mapBackendStockToFrontend = (data: BackendStock): Stock => {
     location: data.location,
     lastUpdated: data.updated_at,
     notes: data.notes,
+    hasSizes: data.has_sizes || false,
   };
 };
 
