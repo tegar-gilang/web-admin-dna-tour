@@ -51,6 +51,10 @@ import {
 } from '@/components/ui/Dialog';
 import { exportMasterWorkbookToExcel } from '@/lib/export';
 import { kloterService } from '@/core/services/kloterService';
+import {
+  tourLeaderService,
+  getPrimaryTourLeader,
+} from '@/core/services/tourLeaderService';
 
 export default function Pilgrims() {
   // ==========================================
@@ -64,6 +68,7 @@ export default function Pilgrims() {
     groups,
     setGroups,
     tourLeaders,
+    setTourLeaders,
     mutawifs,
     schedules,
     emergencies,
@@ -107,7 +112,7 @@ export default function Pilgrims() {
   const todayStr = new Date().toISOString().split('T')[0];
 
   // ==========================================
-  // LOAD JAMAAH DARI BACKEND
+  // LOAD JAMAAH & DATA TERKAIT DARI BACKEND
   // ==========================================
 
   useEffect(() => {
@@ -135,18 +140,22 @@ export default function Pilgrims() {
   }, [setPilgrims]);
 
   useEffect(() => {
-    const fetchKloters = async () => {
+    const fetchKlotersAndTourLeaders = async () => {
       try {
-        const data = await kloterService.getKloters();
+        const [klotersData, tourLeadersData] = await Promise.all([
+          kloterService.getKloters(),
+          tourLeaderService.getTourLeaders(),
+        ]);
 
-        setGroups(data);
+        setGroups(klotersData);
+        setTourLeaders(tourLeadersData);
       } catch (error) {
-        console.error('Gagal mengambil data kloter:', error);
+        console.error('Gagal mengambil data kloter/tour leader:', error);
       }
     };
 
-  fetchKloters();
-}, [setGroups]);
+    fetchKlotersAndTourLeaders();
+  }, [setGroups, setTourLeaders]);
 
   const formatIndoDate = (
     dateStr?: string,
@@ -479,7 +488,18 @@ export default function Pilgrims() {
 
   const openEditModal = (p: Pilgrim) => {
     setSelectedPilgrim(p);
-    setFormData({ ...p });
+
+    let kloterBackendId = p.kloterId;
+    if (!kloterBackendId && p.group) {
+      const foundGrp = groups.find(g => g.name === p.group || g.id === p.group);
+      kloterBackendId = foundGrp?.backendId || foundGrp?.id || null;
+    }
+    const primaryTL = kloterBackendId ? getPrimaryTourLeader(kloterBackendId, tourLeaders) : null;
+
+    setFormData({
+      ...p,
+      tourLeader: primaryTL ? primaryTL.name : '',
+    });
 
     setModifiedDates({
       departureDate: true,
@@ -1837,10 +1857,19 @@ export default function Pilgrims() {
                 activePilgrim?.group ||
                 '-';
 
-              const tlFormatted =
-                matchedGroup?.tourLeader ||
-                activePilgrim?.tourLeader ||
-                '-';
+              let activeKloterId = activePilgrim?.kloterId;
+              if (!activeKloterId && activePilgrim?.group) {
+                const foundG = groups.find(
+                  (g) => g.name === activePilgrim.group || g.id === activePilgrim.group
+                );
+                activeKloterId = foundG?.backendId || foundG?.id || null;
+              }
+              const activePrimaryTL = activeKloterId
+                ? getPrimaryTourLeader(activeKloterId, tourLeaders)
+                : null;
+              const tlFormatted = activePrimaryTL
+                ? activePrimaryTL.name
+                : '-';
 
               const mutawifFormatted =
                 matchedGroup?.mutawif ||
@@ -2452,12 +2481,14 @@ export default function Pilgrims() {
                             (g) => g.backendId === selectedKloterId
                           );
 
+                          const targetId = selectedKloterId || foundGrp?.backendId || foundGrp?.id || '';
+                          const primaryTL = targetId ? getPrimaryTourLeader(targetId, tourLeaders) : null;
+
                           setFormData({
                             ...formData,
                             kloterId: selectedKloterId || null,
                             group: foundGrp?.name || '',
-                            tourLeader:
-                              foundGrp?.tourLeader || formData.tourLeader,
+                            tourLeader: primaryTL ? primaryTL.name : '',
                             mutawifLocal:
                               foundGrp?.mutawif || formData.mutawifLocal,
                           });

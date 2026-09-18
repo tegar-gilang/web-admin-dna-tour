@@ -110,16 +110,10 @@ export type Family = {
   status: string;
 };
 
-export type TourLeader = {
-  id: string;
+import { TourLeader as ServiceTourLeader, TourLeaderKloter } from './services/tourLeaderService';
 
-  name: string;
-  phone: string;
-  group: string;
-  experience?: string;
-  performance?: string;
-  status: string;
-};
+export type TourLeader = ServiceTourLeader;
+export type { TourLeaderKloter };
 
 export type Mutawif = {
   id: string;
@@ -267,6 +261,7 @@ type StoreState = {
   setPilgrims: (pilgrims: Pilgrim[]) => void;
   setGroups: (groups: Group[]) => void;
   setPackages: (packages: Package[]) => void;
+  setTourLeaders: (tourLeaders: TourLeader[]) => void;
   setFetchingRegistrations: (isLoading: boolean) => void;
   setFetchError: (error: string | null) => void;
   
@@ -872,6 +867,7 @@ export const useStore = create<StoreState>((set) => ({
   setPilgrims: (pilgrims) => set({ pilgrims }),
   setGroups: (groups) => set({ groups }),
   setPackages: (packages) => set({ packages }),
+  setTourLeaders: (tourLeaders) => set({ tourLeaders }),
   setFetchingRegistrations: (isLoading) => set({ isFetchingRegistrations: isLoading }),
   setFetchError: (error) => set({ fetchError: error }),
 
