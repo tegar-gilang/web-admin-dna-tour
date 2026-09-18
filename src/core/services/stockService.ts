@@ -31,9 +31,9 @@ export interface StockTransaction {
   stockId: string;
   type: string;
   quantity: number;
-  beforeQuantity: number;
-  afterQuantity: number;
-  notes: string | null;
+  size: string | null;
+  referenceType: string | null;
+  referenceId: string | null;
   createdAt: string;
 }
 
@@ -42,9 +42,9 @@ export interface BackendStockTransaction {
   stock_id: string;
   type: string;
   quantity: number;
-  before_quantity: number;
-  after_quantity: number;
-  notes: string | null;
+  size: string | null;
+  reference_type: string | null;
+  reference_id: string | null;
   created_at: string;
 }
 
@@ -69,9 +69,9 @@ export const mapBackendTransactionToFrontend = (data: BackendStockTransaction): 
     stockId: data.stock_id,
     type: data.type,
     quantity: data.quantity,
-    beforeQuantity: data.before_quantity,
-    afterQuantity: data.after_quantity,
-    notes: data.notes,
+    size: data.size,
+    referenceType: data.reference_type,
+    referenceId: data.reference_id,
     createdAt: data.created_at,
   };
 };

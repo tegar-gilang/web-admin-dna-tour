@@ -1219,7 +1219,7 @@ export default function StaffStock() {
               ) : transactions.length === 0 ? (
                 <div className="py-12 flex flex-col items-center justify-center text-gray-500">
                   <Boxes className="w-10 h-10 mb-2 text-gray-300" />
-                  <p>Belum ada riwayat transaksi</p>
+                  <p>Belum ada riwayat stok.</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto border border-gray-200 rounded-2xl">
@@ -1228,25 +1228,62 @@ export default function StaffStock() {
                       <TableRow>
                         <TableHead className="text-xs font-bold text-gray-500">Tanggal</TableHead>
                         <TableHead className="text-xs font-bold text-gray-500">Jenis</TableHead>
-                        <TableHead className="text-xs font-bold text-gray-500">Kuantitas</TableHead>
-                        <TableHead className="text-xs font-bold text-gray-500">Sblm &rarr; Ssdh</TableHead>
-                        <TableHead className="text-xs font-bold text-gray-500">Catatan</TableHead>
+                        <TableHead className="text-xs font-bold text-gray-500">Barang</TableHead>
+                        <TableHead className="text-xs font-bold text-gray-500 text-right">Qty</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {transactions.map(trx => (
-                        <TableRow key={trx.id}>
-                          <TableCell className="text-xs text-gray-700 whitespace-nowrap">{new Date(trx.createdAt).toLocaleString('id-ID')}</TableCell>
-                          <TableCell className="text-xs">
-                            <Badge variant={trx.type.includes('add') || trx.type === 'in' ? 'success' : trx.type.includes('sub') || trx.type === 'out' ? 'warning' : 'default'} className="shadow-2xs">
-                              {trx.type}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-xs font-bold">{trx.quantity}</TableCell>
-                          <TableCell className="text-xs text-gray-500">{trx.beforeQuantity} &rarr; {trx.afterQuantity}</TableCell>
-                          <TableCell className="text-xs text-gray-500 max-w-[200px] truncate" title={trx.notes || ''}>{trx.notes || '-'}</TableCell>
-                        </TableRow>
-                      ))}
+                      {[...transactions].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map(trx => {
+                        let displayType = 'Barang Masuk';
+                        let displayQty = trx.quantity > 0 ? `+${trx.quantity}` : `${trx.quantity}`;
+                        let variant: 'success' | 'warning' | 'default' = 'success';
+                        
+                        if (trx.type === 'out') {
+                            displayType = 'Barang Keluar';
+                            displayQty = trx.quantity > 0 ? `-${trx.quantity}` : `${trx.quantity}`;
+                            variant = 'warning';
+                        } else if (trx.type === 'in') {
+                            displayType = 'Barang Masuk';
+                            displayQty = trx.quantity > 0 ? `+${trx.quantity}` : `${trx.quantity}`;
+                        } else if (trx.type === 'adjustment') {
+                            if (trx.quantity < 0) {
+                                displayType = 'Barang Keluar';
+                                displayQty = `${trx.quantity}`;
+                                variant = 'warning';
+                            } else {
+                                displayType = 'Barang Masuk';
+                                displayQty = `+${trx.quantity}`;
+                            }
+                        }
+
+                        const item = staffStocks.find(s => s.id === trx.stockId);
+                        const itemName = item ? item.name : 'Barang tidak ditemukan';
+                        const displayItem = `${itemName}${trx.size ? ` (${trx.size})` : ''}`;
+
+                        const dateFormatted = new Intl.DateTimeFormat('id-ID', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric'
+                        }).format(new Date(trx.createdAt));
+
+                        return (
+                          <TableRow key={trx.id}>
+                            <TableCell className="text-xs text-gray-700 whitespace-nowrap">{dateFormatted}</TableCell>
+                            <TableCell className="text-xs">
+                              <Badge variant={variant} className="shadow-2xs">
+                                {displayType}
+                              </Badge>
+                              {trx.referenceType && (
+                                <span className="ml-2 text-[10px] text-gray-400 capitalize hidden sm:inline-block">({trx.referenceType})</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-xs font-semibold text-gray-800">{displayItem}</TableCell>
+                            <TableCell className={`text-xs font-bold text-right ${trx.quantity < 0 || trx.type === 'out' ? 'text-red-600' : 'text-emerald-600'}`}>
+                              {displayQty}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>
