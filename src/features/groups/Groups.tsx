@@ -18,6 +18,7 @@ import { useStore, Group } from '@/core/store';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/Dialog';
 import { exportToExcel } from '@/lib/export';
 import { kloterService } from '../../core/services/kloterService';
+import { tourLeaderService, getKloterTourLeaders } from '../../core/services/tourLeaderService';
 
 export default function Groups() {
 
@@ -30,6 +31,7 @@ export default function Groups() {
   const { 
     groups,
     setGroups,
+    setTourLeaders,
     addGroup, 
     updateGroup, 
     deleteGroups, 
@@ -63,14 +65,18 @@ export default function Groups() {
   const [formData, setFormData] = useState<Partial<Group>>({});
 
   useEffect(() => {
-    const loadKloters = async () => {
+    const loadKlotersAndTourLeaders = async () => {
       try {
         setIsLoadingKloters(true);
         setKloterError(null);
 
-        const data = await kloterService.getKloters();
+        const [klotersData, tourLeadersData] = await Promise.all([
+          kloterService.getKloters(),
+          tourLeaderService.getTourLeaders(),
+        ]);
 
-        setGroups(data);
+        setGroups(klotersData);
+        setTourLeaders(tourLeadersData);
       } catch (error) {
         const message =
           error instanceof Error
@@ -83,8 +89,8 @@ export default function Groups() {
       }
     };
 
-    loadKloters();
-  }, [setGroups]);
+    loadKlotersAndTourLeaders();
+  }, [setGroups, setTourLeaders]);
 
   // Stats Calculations
   const totalGroups = groups.length;
@@ -101,18 +107,22 @@ export default function Groups() {
       if (activeTab === 'draft' && g.status !== 'Draft') return false;
       if (activeTab === 'archived' && !(g.status === 'Archived' || g.status === 'Diarsipkan')) return false;
 
+      const targetId = g.backendId || g.id;
+      const assignedTLs = getKloterTourLeaders(targetId, tourLeaders);
+      const tlNamesDisplay = assignedTLs.length > 0 ? assignedTLs.map(t => t.name).join(', ') : '-';
+
       // Search
       const matchesSearch = 
         g.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
         g.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (g.formId && g.formId.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (g.kloter && g.kloter.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (g.tourLeader && g.tourLeader.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        tlNamesDisplay.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (g.mutawif && g.mutawif.toLowerCase().includes(searchTerm.toLowerCase()));
 
       return matchesSearch;
     });
-  }, [groups, activeTab, searchTerm]);
+  }, [groups, activeTab, searchTerm, tourLeaders]);
 
   const toggleSelectAll = () => {
     if (selectedIds.size === filteredGroups.length) {
@@ -267,16 +277,21 @@ export default function Groups() {
   };
 
   const handleExportExcel = () => {
-    const exportData = filteredGroups.map(g => ({
-      'ID Kloter': g.id,
-      'Form ID': g.formId || '-',
-      'Nama Kloter': g.name,
-      'Kode Kloter': g.kloter,
-      'Jumlah Jamaah': pilgrims.filter(p => p.group === g.name).length,
-      'Tour Leader': g.tourLeader,
-      'Mutawwif': g.mutawif,
-      'Status': g.status,
-    }));
+    const exportData = filteredGroups.map(g => {
+      const targetId = g.backendId || g.id;
+      const assignedTLs = getKloterTourLeaders(targetId, tourLeaders);
+      const tlDisplay = assignedTLs.length > 0 ? assignedTLs.map(t => t.name).join(', ') : '-';
+      return {
+        'ID Kloter': g.id,
+        'Form ID': g.formId || '-',
+        'Nama Kloter': g.name,
+        'Kode Kloter': g.kloter,
+        'Jumlah Jamaah': pilgrims.filter(p => p.group === g.name).length,
+        'Tour Leader': tlDisplay,
+        'Mutawwif': g.mutawif,
+        'Status': g.status,
+      };
+    });
     exportToExcel(exportData, 'Data_Kloter_DNA_Tour', 'Laporan Data Kloter & Rombongan - DNA Tour');
     toast("Data kloter berhasil diexport ke Excel.", "success");
   };
@@ -650,7 +665,13 @@ export default function Groups() {
                       </span>
                     </TableCell>
                     <TableCell className="py-4 whitespace-nowrap">
-                      <span className="text-sm text-gray-900 font-bold whitespace-nowrap">{group.tourLeader || '-'}</span>
+                      <span className="text-sm text-gray-900 font-bold whitespace-nowrap">
+                        {(() => {
+                          const targetId = group.backendId || group.id;
+                          const assignedTLs = getKloterTourLeaders(targetId, tourLeaders);
+                          return assignedTLs.length > 0 ? assignedTLs.map(t => t.name).join(', ') : '-';
+                        })()}
+                      </span>
                     </TableCell>
                     <TableCell className="py-4 whitespace-nowrap">
                       <span className="text-sm text-gray-900 font-bold whitespace-nowrap">{group.mutawif || '-'}</span>

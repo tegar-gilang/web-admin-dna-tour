@@ -19,6 +19,7 @@ import { exportRoomListToPdf } from '@/lib/exportPdf';
 import { toast } from '@/lib/toast';
 import { jamaahService } from '../../core/services/jamaahService';
 import { kloterService } from '../../core/services/kloterService';
+import { tourLeaderService, getKloterTourLeaders } from '../../core/services/tourLeaderService';
 
 export default function GroupDetail() {
 
@@ -33,6 +34,7 @@ export default function GroupDetail() {
   const { 
     groups,
     setGroups,
+    setTourLeaders,
     updateGroup, 
     pilgrims,
     setPilgrims,
@@ -107,12 +109,16 @@ export default function GroupDetail() {
   }, [setPilgrims]);
 
   useEffect(() => {
-    const loadKloters = async () => {
+    const loadKlotersAndTourLeaders = async () => {
       try {
         setIsLoadingGroup(true);
 
-        const data = await kloterService.getKloters();
-        setGroups(data);
+        const [klotersData, tourLeadersData] = await Promise.all([
+          kloterService.getKloters(),
+          tourLeaderService.getTourLeaders(),
+        ]);
+        setGroups(klotersData);
+        setTourLeaders(tourLeadersData);
       } catch (error) {
         const message =
           error instanceof Error
@@ -125,8 +131,8 @@ export default function GroupDetail() {
       }
     };
 
-    loadKloters();
-  }, [setGroups]);
+    loadKlotersAndTourLeaders();
+  }, [setGroups, setTourLeaders]);
 
 if (isLoadingGroup) {
   return (
@@ -162,7 +168,9 @@ if (isLoadingGroup) {
 
   // Related Data for this Kloter
   const groupPilgrims = pilgrims.filter(p => p.group === group.name || p.group === group.kloter || p.group === group.id);
-  const groupTourLeaders = tourLeaders.filter(t => t.group === group.name || t.group === group.kloter);
+  const targetKloterId = group.backendId || group.id;
+  const groupTourLeaders = getKloterTourLeaders(targetKloterId, tourLeaders);
+  const assignedTLNamesDisplay = groupTourLeaders.length > 0 ? groupTourLeaders.map(t => t.name).join(', ') : '-';
   const groupMutawifs = mutawifs.filter(m => m.group === group.name || m.group === group.kloter);
   const groupEmergencies = emergencies.filter(e => e.group === group.name || e.group === group.kloter);
 
@@ -355,7 +363,7 @@ if (isLoadingGroup) {
       'Kontak Darurat': p.emergencyContact || '-',
       'Paket Umrah': p.umrahPackage || '-',
       'Kloter': group.name,
-      'Tour Leader': group.tourLeader,
+      'Tour Leader': assignedTLNamesDisplay,
       'Muthawwif': group.mutawif,
       'Hotel Makkah': p.hotelMakkah || p.hotel || '-',
       'Hotel Madinah': p.hotelMadinah || '-'
@@ -474,8 +482,8 @@ if (isLoadingGroup) {
             <div className="flex justify-between items-start">
               <div className="space-y-1">
                 <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">PETUGAS KLOTER</p>
-                <p className="text-sm sm:text-base font-bold tracking-tight text-gray-900 truncate max-w-[180px]" title={group.tourLeader}>
-                  TL: {group.tourLeader || 'Belum ditugaskan'}
+                <p className="text-sm sm:text-base font-bold tracking-tight text-gray-900 truncate max-w-[180px]" title={assignedTLNamesDisplay}>
+                  TL: {assignedTLNamesDisplay !== '-' ? assignedTLNamesDisplay : 'Belum ditugaskan'}
                 </p>
                 <p className="text-xs text-gray-600 truncate max-w-[180px]" title={group.mutawif}>
                   MW: {group.mutawif || 'Belum ditugaskan'}
@@ -656,7 +664,7 @@ if (isLoadingGroup) {
                 </div>
                 <div className="flex justify-between items-center py-3">
                   <span className="text-xs text-gray-500 font-medium">Tour Leader (TL)</span>
-                  <span className="font-bold text-sm text-gray-900">{group.tourLeader || 'Belum Ditugaskan'}</span>
+                  <span className="font-bold text-sm text-gray-900">{assignedTLNamesDisplay !== '-' ? assignedTLNamesDisplay : 'Belum Ditugaskan'}</span>
                 </div>
                 <div className="flex justify-between items-center py-3">
                   <span className="text-xs text-gray-500 font-medium">Muthawwif Lokal KSA</span>
@@ -1265,7 +1273,7 @@ if (isLoadingGroup) {
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[10px] font-bold text-emerald-800 bg-white border border-emerald-200">
                   Tour Leader (TL)
                 </span>
-                <p className="font-bold text-gray-900 text-sm">{group.tourLeader || 'Belum ditugaskan'}</p>
+                <p className="font-bold text-gray-900 text-sm">{assignedTLNamesDisplay !== '-' ? assignedTLNamesDisplay : 'Belum ditugaskan'}</p>
                 <p className="text-xs text-gray-600 flex items-center gap-1.5">
                   <Phone className="w-3.5 h-3.5 text-emerald-600" /> Penanggung Jawab Rombongan
                 </p>

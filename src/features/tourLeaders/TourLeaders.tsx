@@ -8,6 +8,7 @@ import { Dialog, DialogContent } from '@/components/ui/Dialog';
 import { ConfirmDeleteDialog } from '@/components/ui/ConfirmDeleteDialog';
 import { useStore, TourLeader } from '@/core/store';
 import { tourLeaderService } from '@/core/services/tourLeaderService';
+import { kloterService } from '@/core/services/kloterService';
 import { toast } from '@/lib/toast';
 import { exportToExcel } from '@/lib/export';
 import { 
@@ -24,7 +25,7 @@ export default function TourLeaders() {
 // Komponen utama untuk fitur TOURLEADERS (API Integrated)
 // ==========================================
 
-  const { tourLeaders, setTourLeaders, groups } = useStore();
+  const { tourLeaders, setTourLeaders, groups, setGroups } = useStore();
   
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -69,15 +70,36 @@ export default function TourLeaders() {
     }
   }, [setTourLeaders]);
 
+  const fetchKloters = useCallback(async () => {
+    try {
+      const data = await kloterService.getKloters();
+      setGroups(data);
+    } catch (err) {
+      console.error('Gagal mengambil data Kloter:', err);
+    }
+  }, [setGroups]);
+
   useEffect(() => {
     fetchTourLeaders();
-  }, [fetchTourLeaders]);
+    fetchKloters();
+  }, [fetchTourLeaders, fetchKloters]);
 
   // Helper check assigned
   const isAssigned = (l: TourLeader) => Boolean(
     (l.kloters && l.kloters.length > 0) || 
     (l.group && l.group !== 'Unassigned' && l.group !== 'Belum Ditugaskan' && l.group !== '-')
   );
+
+  // Helper to resolve Kloter UUID safely
+  const getKloterUuid = useCallback((kloterIdOrUuid: string): string | null => {
+    if (!kloterIdOrUuid || kloterIdOrUuid === 'Belum Ditugaskan') return null;
+    const matchedGroup = groups.find(g => 
+      (g.backendId && g.backendId === kloterIdOrUuid) || 
+      g.id === kloterIdOrUuid || 
+      g.name === kloterIdOrUuid
+    );
+    return matchedGroup?.backendId || matchedGroup?.id || kloterIdOrUuid;
+  }, [groups]);
 
   // Statistics calculation
   const totalLeaders = tourLeaders.length;
@@ -121,14 +143,17 @@ export default function TourLeaders() {
       }
 
       // Search matching
+      const term = searchTerm.toLowerCase().trim();
+      if (!term) return true;
+
       const matchSearch = 
-        leader.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        (leader.id && leader.id.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (leader.loginId && leader.loginId.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (leader.phone && leader.phone.includes(searchTerm)) ||
-        (leader.group && leader.group.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (leader.kloters && leader.kloters.some(k => k.name.toLowerCase().includes(searchTerm.toLowerCase()))) ||
-        ((leader.experience || leader.performance || '').toLowerCase().includes(searchTerm.toLowerCase()));
+        leader.name.toLowerCase().includes(term) || 
+        (leader.id && leader.id.toLowerCase().includes(term)) ||
+        (leader.loginId && leader.loginId.toLowerCase().includes(term)) ||
+        (leader.phone && leader.phone.includes(term)) ||
+        (leader.group && leader.group !== 'Belum Ditugaskan' && leader.group.toLowerCase().includes(term)) ||
+        (leader.kloters && leader.kloters.some(k => k.name.toLowerCase().includes(term))) ||
+        ((leader.experience || leader.performance || '').toLowerCase().includes(term));
 
       return matchSearch;
     }).sort((a, b) => {
@@ -163,11 +188,16 @@ export default function TourLeaders() {
   const confirmDelete = async () => {
     setIsDeleting(true);
     try {
-      const leadersToDelete = tourLeaders.filter(l => selectedIds.has(l.backendId) || selectedIds.has(l.id));
+      const leadersToDelete = tourLeaders.filter(l => 
+        selectedIds.has(l.backendId || l.id) || 
+        (l.backendId && selectedIds.has(l.backendId)) || 
+        (l.id && selectedIds.has(l.id))
+      );
+
       for (const leader of leadersToDelete) {
         await tourLeaderService.deleteTourLeaderWithUnassign(leader);
       }
-      toast(`${selectedIds.size} data Tour Leader berhasil dihapus dari database.`, "success");
+      toast(`${selectedIds.size} data Tour Leader berhasil dihapus.`, "success");
       setSelectedIds(new Set());
       setIsDeleteDialogOpen(false);
       await fetchTourLeaders();
@@ -208,7 +238,7 @@ export default function TourLeaders() {
 
   const openDetailModal = (leader: TourLeader) => {
     setEditingLeader(leader);
-    setFormData(leader);
+    setFormData({ ...leader });
     setSelectedKloterToAssign('');
     setModalMode('detail');
     setIsModalOpen(true);
@@ -230,7 +260,8 @@ export default function TourLeaders() {
     try {
       if (editingLeader) {
         // Update existing Tour Leader
-        const updated = await tourLeaderService.updateTourLeader(editingLeader.backendId, {
+        const targetId = editingLeader.backendId || editingLeader.id;
+        const updated = await tourLeaderService.updateTourLeader(targetId, {
           loginId: loginIdValue,
           name: formData.name.trim(),
           phone: formData.phone?.trim() || '',
@@ -241,10 +272,9 @@ export default function TourLeaders() {
 
         // If a new kloter is selected to be assigned in form
         if (selectedKloterToAssign && selectedKloterToAssign !== 'Belum Ditugaskan') {
-          const matchedGroup = groups.find(g => g.id === selectedKloterToAssign || g.name === selectedKloterToAssign || g.backendId === selectedKloterToAssign);
-          const kloterUuid = matchedGroup?.backendId || matchedGroup?.id || selectedKloterToAssign;
+          const kloterUuid = getKloterUuid(selectedKloterToAssign);
           if (kloterUuid) {
-            await tourLeaderService.assignKloter(updated.backendId, kloterUuid);
+            await tourLeaderService.assignKloter(updated.backendId || updated.id, kloterUuid);
           }
         }
 
@@ -262,14 +292,13 @@ export default function TourLeaders() {
 
         // Assign kloter if selected
         if (selectedKloterToAssign && selectedKloterToAssign !== 'Belum Ditugaskan') {
-          const matchedGroup = groups.find(g => g.id === selectedKloterToAssign || g.name === selectedKloterToAssign || g.backendId === selectedKloterToAssign);
-          const kloterUuid = matchedGroup?.backendId || matchedGroup?.id || selectedKloterToAssign;
+          const kloterUuid = getKloterUuid(selectedKloterToAssign);
           if (kloterUuid) {
-            await tourLeaderService.assignKloter(created.backendId, kloterUuid);
+            await tourLeaderService.assignKloter(created.backendId || created.id, kloterUuid);
           }
         }
 
-        toast(`Tour Leader ${formData.name} berhasil ditambahkan ke database.`, "success");
+        toast(`Tour Leader ${formData.name} berhasil ditambahkan.`, "success");
       }
 
       setIsModalOpen(false);
@@ -282,15 +311,20 @@ export default function TourLeaders() {
     }
   };
 
-  // Helper assign single kloter from modal
-  const handleAssignKloterToLeader = async (leaderBackendId: string, kloterIdOrUuid: string) => {
+  // Helper assign single kloter from modal (with state sync)
+  const handleAssignKloterToLeader = async (leaderId: string, kloterIdOrUuid: string) => {
     if (!kloterIdOrUuid || kloterIdOrUuid === 'Belum Ditugaskan') return;
-    const matchedGroup = groups.find(g => g.id === kloterIdOrUuid || g.name === kloterIdOrUuid || g.backendId === kloterIdOrUuid);
-    const kloterUuid = matchedGroup?.backendId || matchedGroup?.id || kloterIdOrUuid;
-    
+    const targetId = leaderId;
+    const kloterUuid = getKloterUuid(kloterIdOrUuid);
+
+    if (!kloterUuid) {
+      toast("ID Kloter tidak valid.", "error");
+      return;
+    }
+
     setIsAssigningKloter(true);
     try {
-      const updated = await tourLeaderService.assignKloter(leaderBackendId, kloterUuid);
+      const updated = await tourLeaderService.assignKloter(targetId, kloterUuid);
       toast(`Kloter berhasil ditugaskan ke Tour Leader.`, "success");
       setEditingLeader(updated);
       setFormData(updated);
@@ -303,14 +337,15 @@ export default function TourLeaders() {
     }
   };
 
-  // Helper unassign single kloter from modal
-  const handleUnassignKloterFromLeader = async (leaderBackendId: string, kloterUuid: string) => {
+  // Helper unassign single kloter from modal (with state sync)
+  const handleUnassignKloterFromLeader = async (leaderId: string, kloterUuid: string) => {
+    if (!leaderId || !kloterUuid) return;
     setIsAssigningKloter(true);
     try {
-      await tourLeaderService.unassignKloter(leaderBackendId, kloterUuid);
+      await tourLeaderService.unassignKloter(leaderId, kloterUuid);
       toast(`Penugasan Kloter berhasil dilepas.`, "success");
       
-      const refreshedDetail = await tourLeaderService.getTourLeaderById(leaderBackendId);
+      const refreshedDetail = await tourLeaderService.getTourLeaderById(leaderId);
       setEditingLeader(refreshedDetail);
       setFormData(refreshedDetail);
       await fetchTourLeaders();
@@ -1011,6 +1046,8 @@ export default function TourLeaders() {
               ? activeLeader.kloters
               : (activeLeader?.group && activeLeader.group !== 'Belum Ditugaskan' ? [{ id: '1', name: activeLeader.group }] : []);
 
+            const activeTargetId = activeLeader?.backendId || activeLeader?.id;
+
             return (
               <div className="space-y-7 animate-fade-in">
                 {/* Card 1: Informasi Pribadi Tour Leader */}
@@ -1100,12 +1137,12 @@ export default function TourLeaders() {
                                   {k.code && <p className="text-[11px] font-mono text-gray-500">{k.code}</p>}
                                 </div>
                               </div>
-                              {activeLeader?.backendId && k.id && (
+                              {activeTargetId && k.id && (
                                 <Button
                                   size="sm"
                                   variant="outline"
                                   disabled={isAssigningKloter}
-                                  onClick={() => handleUnassignKloterFromLeader(activeLeader.backendId, k.id)}
+                                  onClick={() => handleUnassignKloterFromLeader(activeTargetId, k.id)}
                                   className="text-xs border-red-200 text-red-700 hover:bg-red-50 rounded-xl h-8 px-3 cursor-pointer"
                                 >
                                   Lepas Kloter
@@ -1122,7 +1159,7 @@ export default function TourLeaders() {
                     </div>
 
                     {/* Quick Assign Kloter Form in Detail View */}
-                    {activeLeader?.backendId && (
+                    {activeTargetId && (
                       <div className="pt-3 border-t border-gray-100 flex items-center gap-2">
                         <select
                           value={selectedKloterToAssign}
@@ -1137,7 +1174,7 @@ export default function TourLeaders() {
                         <Button
                           size="sm"
                           disabled={!selectedKloterToAssign || isAssigningKloter}
-                          onClick={() => handleAssignKloterToLeader(activeLeader.backendId, selectedKloterToAssign)}
+                          onClick={() => handleAssignKloterToLeader(activeTargetId, selectedKloterToAssign)}
                           className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold h-10 px-4 rounded-xl cursor-pointer"
                         >
                           {isAssigningKloter ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-4 h-4 mr-1" />}
@@ -1335,6 +1372,7 @@ export default function TourLeaders() {
         onClose={() => setIsDeleteDialogOpen(false)} 
         onConfirm={confirmDelete}
         itemCount={selectedIds.size}
+        isLoading={isDeleting}
       />
     </div>
   );

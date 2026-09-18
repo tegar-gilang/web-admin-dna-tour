@@ -4,6 +4,7 @@ export interface BackendTourLeaderKloter {
   id: string;
   name: string;
   code?: string;
+  assigned_at?: string | null;
 }
 
 export interface BackendTourLeader {
@@ -24,6 +25,7 @@ export interface TourLeaderKloter {
   id: string;
   code?: string;
   name: string;
+  assigned_at?: string | null;
 }
 
 export interface TourLeader {
@@ -144,6 +146,7 @@ export function mapBackendToTourLeader(backend: BackendTourLeader): TourLeader {
     id: k.id,
     name: k.name,
     code: k.code,
+    assigned_at: k.assigned_at ?? null,
   }));
 
   let groupDisplay = 'Belum Ditugaskan';
@@ -196,3 +199,43 @@ export function mapUIStatusToBackend(status: string): string {
       return 'active';
   }
 }
+
+export function getKloterTourLeaders(
+  kloterId: string,
+  tourLeaders: TourLeader[]
+): TourLeader[] {
+  if (!kloterId || !tourLeaders || tourLeaders.length === 0) return [];
+  return tourLeaders.filter((tl) =>
+    (tl.kloters || []).some((k) => k.id === kloterId)
+  );
+}
+
+export function getPrimaryTourLeader(
+  kloterId: string,
+  tourLeaders: TourLeader[]
+): TourLeader | null {
+  const assigned = getKloterTourLeaders(kloterId, tourLeaders);
+  if (assigned.length === 0) return null;
+
+  const sorted = [...assigned].sort((a, b) => {
+    const kA = (a.kloters || []).find((k) => k.id === kloterId);
+    const kB = (b.kloters || []).find((k) => k.id === kloterId);
+
+    const timeA = kA?.assigned_at ? new Date(kA.assigned_at).getTime() : null;
+    const timeB = kB?.assigned_at ? new Date(kB.assigned_at).getTime() : null;
+
+    if (timeA !== null && timeB !== null) {
+      if (isNaN(timeA) && isNaN(timeB)) return 0;
+      if (isNaN(timeA)) return 1;
+      if (isNaN(timeB)) return -1;
+      return timeA - timeB;
+    }
+    if (timeA !== null) return -1;
+    if (timeB !== null) return 1;
+
+    return 0;
+  });
+
+  return sorted[0] || null;
+}
+
