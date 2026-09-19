@@ -790,7 +790,7 @@ export default function Pilgrims() {
             'Paket Umrah': p.umrahPackage || '-',
             'Kloter / Group': p.group || '-',
             'Tour Leader': p.tourLeader || '-',
-            'Mutawif Local': (() => { const grp = groups.find(g => g.name === p.group || g.kloter === p.group || g.id === p.group || g.backendId === p.kloterId); return grp && grp.mutawifs && grp.mutawifs.length > 0 ? grp.mutawifs.map(m => m.name).join(', ') : (p.mutawifLocal || '-'); })(),
+            'Mutawif Local': (() => { const grp = groups.find(g => g.backendId === p.kloterId || g.id === p.kloterId || g.name === p.group); return grp?.mutawifs?.length ? grp.mutawifs.map(m => m.name).join(', ') : (p.mutawifLocal || '-'); })(),
             'Hotel Makkah': p.hotelMakkah || p.hotel || '-',
             'Hotel Madinah': p.hotelMadinah || '-',
             'Tgl. Keberangkatan': formatIndoDate(p.departureDate),
@@ -1752,12 +1752,12 @@ export default function Pilgrims() {
                   ? (formData as Pilgrim)
                   : pilgrims[0]);
 
-              const matchedGroup =
-                groups.find(
-                  (g) =>
-                    g.name ===
-                    activePilgrim?.group
-                );
+              const matchedGroup = groups.find(
+                (g) =>
+                  g.backendId === activePilgrim?.kloterId ||
+                  g.id === activePilgrim?.kloterId ||
+                  g.name === activePilgrim?.group
+              );
 
               const formatDetailDate = (
                 dateStr?: string
@@ -1843,9 +1843,9 @@ export default function Pilgrims() {
                 '-';
 
               const mutawifFormatted =
-                matchedGroup?.mutawif ||
-                activePilgrim?.mutawifLocal ||
-                '-';
+                matchedGroup?.mutawifs?.length
+                  ? matchedGroup.mutawifs.map(m => m.name).join(', ')
+                  : activePilgrim?.mutawifLocal || '-';
 
               const packageFormatted =
                 activePilgrim?.umrahPackage ||
@@ -2449,7 +2449,7 @@ export default function Pilgrims() {
                           const selectedKloterId = e.target.value;
 
                           const foundGrp = groups.find(
-                            (g) => g.backendId === selectedKloterId
+                            (g) => g.backendId === selectedKloterId || g.id === selectedKloterId
                           );
 
                           setFormData({
@@ -2459,7 +2459,7 @@ export default function Pilgrims() {
                             tourLeader:
                               foundGrp?.tourLeader || formData.tourLeader,
                             mutawifLocal:
-                              (foundGrp?.mutawifs && foundGrp.mutawifs.length > 0 ? foundGrp.mutawifs.map(m => m.name).join(', ') : foundGrp?.mutawif) || formData.mutawifLocal,
+                              foundGrp?.mutawifs?.length ? foundGrp.mutawifs.map(m => m.name).join(', ') : formData.mutawifLocal,
                           });
                         }}
                         className={`h-12 sm:h-13 w-full rounded-2xl border border-gray-300 bg-white px-4 sm:px-5 text-base ${
