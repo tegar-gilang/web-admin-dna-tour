@@ -95,6 +95,7 @@ export type Group = {
   pilgrims: number;
   tourLeader: string;
   mutawif: string;
+  mutawifs?: Mutawif[];
   status: string;
   hotelMakkahId?: string | null;
   hotelMadinahId?: string | null;
@@ -117,12 +118,20 @@ export type { TourLeaderKloter };
 
 export type Mutawif = {
   id: string;
-
+  backendId?: string;
+  code?: string;
   name: string;
   language: string;
   experience: string;
   group: string;
-  status: string;
+  status: 'Active' | 'Standby' | string;
+  kloterIds?: string[];
+  kloters?: Array<{
+    id: string;
+    name: string;
+    code?: string;
+    assigned_at?: string;
+  }>;
 };
 
 export type ScheduleCategory = string;
@@ -286,6 +295,7 @@ type StoreState = {
   deleteTourLeader: (id: string) => void;
   deleteTourLeaders: (ids: string[]) => void;
 
+  setMutawifs: (mutawifs: Mutawif[]) => void;
   addMutawif: (m: Mutawif) => void;
   updateMutawif: (id: string, m: Partial<Mutawif>) => void;
   deleteMutawif: (id: string) => void;
@@ -1185,6 +1195,7 @@ export const useStore = create<StoreState>((set) => ({
     };
   }),
 
+  setMutawifs: (mutawifs) => set({ mutawifs }),
   addMutawif: (m) => set((state) => ({ mutawifs: [m, ...state.mutawifs] })),
   updateMutawif: (id, updates) => set((state) => {
     const prevMutawif = state.mutawifs.find(m => m.id === id);
@@ -1221,37 +1232,12 @@ export const useStore = create<StoreState>((set) => ({
       pilgrims: updatedPilgrims
     };
   }),
-  deleteMutawif: (id) => set((state) => {
-    const item = state.mutawifs.find(x => x.id === id);
-    if (!item) return state;
-    const trash: TrashItem = {
-      id: `trash-${Date.now()}-${Math.random()}`,
-      originalId: item.id,
-      type: 'Mutawif',
-      name: item.name || 'Tidak bernama',
-      deletedAt: new Date().toLocaleString('id-ID'),
-      data: item
-    };
-    return {
-      mutawifs: state.mutawifs.filter(x => x.id !== id),
-      trashItems: [trash, ...state.trashItems]
-    };
-  }),
-  deleteMutawifs: (ids) => set((state) => {
-    const itemsToDelete = state.mutawifs.filter(x => ids.includes(x.id));
-    const newTrashItems = itemsToDelete.map(item => ({
-      id: `trash-${Date.now()}-${Math.random()}-${item.id}`,
-      originalId: item.id,
-      type: 'Mutawif',
-      name: item.name || 'Tidak bernama',
-      deletedAt: new Date().toLocaleString('id-ID'),
-      data: item
-    }));
-    return {
-      mutawifs: state.mutawifs.filter(x => !ids.includes(x.id)),
-      trashItems: [...newTrashItems, ...state.trashItems]
-    };
-  }),
+  deleteMutawif: (id) => set((state) => ({
+    mutawifs: state.mutawifs.filter(x => x.id !== id && x.backendId !== id && x.code !== id),
+  })),
+  deleteMutawifs: (ids) => set((state) => ({
+    mutawifs: state.mutawifs.filter(x => !ids.includes(x.id) && (!x.backendId || !ids.includes(x.backendId)) && (!x.code || !ids.includes(x.code))),
+  })),
 
   setSchedules: (schedules) => set({ schedules }),
   addSchedule: (s) => set((state) => ({ schedules: [s, ...state.schedules] })),

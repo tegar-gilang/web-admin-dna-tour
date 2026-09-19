@@ -118,7 +118,10 @@ export default function Groups() {
         (g.formId && g.formId.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (g.kloter && g.kloter.toLowerCase().includes(searchTerm.toLowerCase())) ||
         tlNamesDisplay.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (g.mutawif && g.mutawif.toLowerCase().includes(searchTerm.toLowerCase()));
+        (g.mutawifs?.some(m =>
+          m.name.toLowerCase().includes(searchTerm.toLowerCase())
+        ) ?? false) ||
+        (g.mutawif?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
 
       return matchesSearch;
     });
@@ -280,7 +283,11 @@ export default function Groups() {
     const exportData = filteredGroups.map(g => {
       const targetId = g.backendId || g.id;
       const assignedTLs = getKloterTourLeaders(targetId, tourLeaders);
-      const tlDisplay = assignedTLs.length > 0 ? assignedTLs.map(t => t.name).join(', ') : '-';
+      const tlDisplay =
+        assignedTLs.length > 0
+          ? assignedTLs.map(t => t.name).join(', ')
+          : '-';
+
       return {
         'ID Kloter': g.id,
         'Form ID': g.formId || '-',
@@ -288,7 +295,10 @@ export default function Groups() {
         'Kode Kloter': g.kloter,
         'Jumlah Jamaah': pilgrims.filter(p => p.group === g.name).length,
         'Tour Leader': tlDisplay,
-        'Mutawwif': g.mutawif,
+        'Mutawwif':
+          g.mutawifs?.length
+            ? g.mutawifs.map(m => m.name).join(', ')
+            : (g.mutawif || '-'),
         'Status': g.status,
       };
     });
@@ -674,7 +684,24 @@ export default function Groups() {
                       </span>
                     </TableCell>
                     <TableCell className="py-4 whitespace-nowrap">
-                      <span className="text-sm text-gray-900 font-bold whitespace-nowrap">{group.mutawif || '-'}</span>
+                      <div className="flex flex-col gap-1">
+                        {group.mutawifs?.length ? (
+                          group.mutawifs.map(m => (
+                            <span
+                              key={m.id}
+                              className="text-sm text-gray-900 font-bold whitespace-nowrap"
+                            >
+                              {m.name}
+                            </span>
+                          ))
+                        ) : group.mutawif ? (
+                          <span className="text-sm text-gray-900 font-bold whitespace-nowrap">
+                            {group.mutawif}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-gray-400 font-medium">-</span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="py-4 whitespace-nowrap">
                       <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase border shadow-2xs ${
