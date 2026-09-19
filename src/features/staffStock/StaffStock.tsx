@@ -29,13 +29,33 @@ export default function StaffStock() {
   const { staffStocks, setStaffStocks } = useStore();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+  const fetchGlobalHistory = async (stocks: StaffStockItem[]) => {
+    try {
+      setIsLoadingHistory(true);
+      setHistoryError(null);
+      const promises = stocks.map(stock => stockService.getStockTransactions(stock.id).catch(() => []));
+      const results = await Promise.all(promises);
+      const allTransactions = results.flat();
+      
+      // Sort desc by createdAt
+      allTransactions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      
+      setGlobalTransactions(allTransactions);
+    } catch (err: any) {
+      setHistoryError('Gagal memuat riwayat stok global');
+      toast('Gagal memuat riwayat stok', 'error');
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
   const fetchStocks = async () => {
     try {
       setIsLoading(true);
       setError(null);
       const data = await stockService.getStocks();
       setStaffStocks(data as any);
+      await fetchGlobalHistory(data as any);
     } catch (err: any) {
       setError(err.message || 'Gagal memuat data stok');
       toast('Gagal memuat data stok dari server', 'error');
@@ -50,9 +70,13 @@ export default function StaffStock() {
   const [searchTerm, setSearchTerm] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("");
-  const [activeTab, setActiveTab] = useState<'all' | 'safe' | 'warning' | 'danger'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'safe' | 'warning' | 'danger' | 'history'>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+  
+  const [historySearchTerm, setHistorySearchTerm] = useState("");
+  const [historyFilterType, setHistoryFilterType] = useState<'all' | 'in' | 'out'>('all');
+  const [globalTransactions, setGlobalTransactions] = useState<StockTransaction[]>([]);
   
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -124,6 +148,33 @@ export default function StaffStock() {
 
     return matchesSearch && matchesCategory && matchesTab;
   });
+
+  const filteredHistory = globalTransactions.filter(trx => {
+    let derivedType = trx.type;
+    if (trx.type === 'adjustment') {
+      derivedType = trx.quantity < 0 ? 'out' : 'in';
+    }
+
+    const matchesType = 
+      historyFilterType === 'all' ? true : 
+      historyFilterType === 'in' ? derivedType === 'in' : 
+      derivedType === 'out';
+
+    const item = staffStocks.find(s => s.id === trx.stockId);
+    const itemName = item ? item.name : '';
+    const itemCategory = item ? item.category : '';
+    const itemId = item ? item.id : '';
+
+    const matchesSearch = 
+      itemName.toLowerCase().includes(historySearchTerm.toLowerCase()) ||
+      itemCategory.toLowerCase().includes(historySearchTerm.toLowerCase()) ||
+      itemId.toLowerCase().includes(historySearchTerm.toLowerCase());
+
+    return matchesType && matchesSearch;
+  });
+  
+  const historyTotalPages = Math.max(1, Math.ceil(filteredHistory.length / itemsPerPage));
+  const paginatedHistory = filteredHistory.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const toggleSelectAll = () => {
     if (selectedIds.size === filteredItems.length && filteredItems.length > 0) {
@@ -540,6 +591,20 @@ export default function StaffStock() {
                 <span className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-red-600 rounded-full animate-tab-indicator" />
               )}
             </button>
+
+            <button 
+              onClick={() => { setActiveTab('history'); setCurrentPage(1); }}
+              className={`relative pb-3 pt-2 px-2.5 text-xs sm:text-sm transition-all duration-200 whitespace-nowrap cursor-pointer flex items-center gap-1.5 select-none rounded-t-lg group active:scale-[0.96] ${
+                activeTab === 'history' 
+                  ? 'font-bold text-blue-800' 
+                  : 'font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50/80'
+              }`}
+            >
+              <span>Riwayat</span>
+              {activeTab === 'history' && (
+                <span className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-blue-600 rounded-full animate-tab-indicator" />
+              )}
+            </button>
           </div>
         </div>
 
@@ -549,10 +614,17 @@ export default function StaffStock() {
             <div className="relative w-full md:max-w-md">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <Input 
-                placeholder="Cari nama barang, kategori, kode, atau gudang..." 
+                placeholder={activeTab === 'history' ? "Cari riwayat nama barang..." : "Cari nama barang, kategori, kode, atau gudang..."} 
                 className="pl-10 h-10 bg-white border-gray-200 rounded-xl text-xs focus:border-emerald-500 focus:ring-emerald-500/20 font-normal"
-                value={searchTerm}
-                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                value={activeTab === 'history' ? historySearchTerm : searchTerm}
+                onChange={(e) => { 
+                  if (activeTab === 'history') {
+                    setHistorySearchTerm(e.target.value);
+                  } else {
+                    setSearchTerm(e.target.value); 
+                  }
+                  setCurrentPage(1); 
+                }}
               />
             </div>
 
@@ -583,17 +655,31 @@ export default function StaffStock() {
           {showFilters && (
             <div className="pt-4 mt-4 border-t border-gray-200/70 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 animate-fade-in">
               <div className="flex flex-col space-y-1.5">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Filter Kategori</label>
-                <select 
-                  className="flex h-10 w-full rounded-xl border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500/20 hover:bg-white cursor-pointer"
-                  value={categoryFilter}
-                  onChange={(e) => { setCategoryFilter(e.target.value); setCurrentPage(1); }}
-                >
-                  <option value="">Semua Kategori</option>
-                  {categories.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                  {activeTab === 'history' ? 'Filter Jenis Transaksi' : 'Filter Kategori'}
+                </label>
+                {activeTab === 'history' ? (
+                  <select 
+                    className="flex h-10 w-full rounded-xl border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500/20 hover:bg-white cursor-pointer"
+                    value={historyFilterType}
+                    onChange={(e) => { setHistoryFilterType(e.target.value as any); setCurrentPage(1); }}
+                  >
+                    <option value="all">Semua Jenis</option>
+                    <option value="in">Barang Masuk</option>
+                    <option value="out">Barang Keluar</option>
+                  </select>
+                ) : (
+                  <select 
+                    className="flex h-10 w-full rounded-xl border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500/20 hover:bg-white cursor-pointer"
+                    value={categoryFilter}
+                    onChange={(e) => { setCategoryFilter(e.target.value); setCurrentPage(1); }}
+                  >
+                    <option value="">Semua Kategori</option>
+                    {categories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               <div className="flex items-end">
@@ -602,14 +688,18 @@ export default function StaffStock() {
                   size="sm" 
                   className="text-gray-500 hover:text-gray-900 w-full sm:w-auto h-10 rounded-xl cursor-pointer active:scale-95 transition-all duration-200"
                   onClick={() => {
-                    setSearchTerm('');
-                    setCategoryFilter('');
-                    setActiveTab('all');
+                    if (activeTab === 'history') {
+                      setHistorySearchTerm('');
+                      setHistoryFilterType('all');
+                    } else {
+                      setSearchTerm('');
+                      setCategoryFilter('');
+                      setActiveTab('all');
+                    }
                     setCurrentPage(1);
                   }}
                 >
                   <RefreshCw className="w-3.5 h-3.5 mr-2" />
-                  Reset Filter
                 </Button>
               </div>
             </div>
@@ -618,200 +708,304 @@ export default function StaffStock() {
 
         {/* Table Content */}
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table className="min-w-[900px]">
-              <TableHeader>
-                <TableRow className="bg-gray-50/70 hover:bg-gray-50/70">
-                  <TableHead className="w-12 text-center pl-4">
-                    <Checkbox 
-                      checked={selectedIds.size > 0 && selectedIds.size === filteredItems.length}
-                      onCheckedChange={toggleSelectAll}
-                      aria-label="Pilih semua"
-                    />
-                  </TableHead>
-                  <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11">
-                    Nama Barang
-                  </TableHead>
-                  <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11">
-                    Kategori
-                  </TableHead>
-                  <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 text-center">
-                    Stok Saat Ini
-                  </TableHead>
-                  <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 text-center whitespace-nowrap">
-                    Min Stok
-                  </TableHead>
-                  <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11">
-                    Satuan
-                  </TableHead>
-                  <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11">
-                    Gudang Lokasi
-                  </TableHead>
-                  <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11">
-                    Status
-                  </TableHead>
-                  <TableHead className="text-right pr-6 text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap min-w-[120px]">
-                    Aksi
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              
-              <TableBody key={activeTab} className="divide-y divide-gray-100 animate-fade-in">
-                {paginatedData.map((item) => {
-                  const statusInfo = getStockStatus(item);
-                  const stockRatio = item.minStock > 0 ? Math.min(100, Math.round((item.quantity / (item.minStock * 2)) * 100)) : 100;
-                  
-                  return (
-                    <TableRow key={item.id} className={selectedIds.has(item.id) ? "bg-emerald-50/40" : "hover:bg-gray-50/60"}>
-                      <TableCell className="pl-4">
-                        <Checkbox 
-                          checked={selectedIds.has(item.id)}
-                          onCheckedChange={() => toggleSelect(item.id)}
-                          aria-label={`Pilih ${item.name}`}
-                        />
-                      </TableCell>
-
-                      <TableCell className="font-medium text-gray-900 py-3.5">
-                        <div className="flex flex-col">
-                          <span className="font-bold text-gray-900 text-sm hover:text-emerald-700 cursor-pointer" onClick={() => openDetailModal(item)}>
-                            {item.name}
-                          </span>
-                          {item.notes && (
-                            <span className="text-[11px] text-gray-500 truncate max-w-[240px] mt-0.5" title={item.notes}>
-                              {item.notes}
-                            </span>
-                          )}
-                        </div>
-                      </TableCell>
-
-                      <TableCell>
-                        <span className={cn(
-                          "inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap",
-                          "bg-slate-50 text-slate-700 border border-slate-200/80 shadow-2xs"
-                        )}>
-                          {item.category}
-                        </span>
-                      </TableCell>
-
-                      {/* Stok Saat Ini with quick tactile +/- buttons */}
-                      <TableCell className="text-center">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <button 
-                            type="button"
-                            onClick={() => handleQuickAdjust(item.id, -1, item.name, item.quantity)}
-                            disabled={item.quantity <= 0 || item.hasSizes}
-                            className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-150 active:scale-90 disabled:opacity-20 disabled:hover:bg-transparent disabled:hover:text-gray-400 cursor-pointer disabled:cursor-not-allowed"
-                            title={item.hasSizes ? "Item dengan ukuran tidak bisa di-adjust cepat" : "Kurangi 1 unit"}
-                          >
-                            <MinusCircle className="w-4 h-4" />
-                          </button>
-
-                          <div className="w-12 text-center">
-                            <span className={`text-base font-black tracking-tight ${
-                              item.quantity === 0 ? 'text-red-600' : item.quantity <= item.minStock ? 'text-amber-600' : 'text-gray-900'
-                            }`}>
-                              {item.quantity}
-                            </span>
-                          </div>
-
-                          <button 
-                            type="button"
-                            onClick={() => handleQuickAdjust(item.id, 1, item.name, item.quantity)}
-                            disabled={item.hasSizes}
-                            className="p-1 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-150 active:scale-90 disabled:opacity-20 disabled:hover:bg-transparent disabled:hover:text-gray-400 cursor-pointer disabled:cursor-not-allowed"
-                            title={item.hasSizes ? "Item dengan ukuran tidak bisa di-adjust cepat" : "Tambah 1 unit"}
-                          >
-                            <PlusCircle className="w-4 h-4" />
-                          </button>
-                        </div>
-
-                        {/* Visual stock meter bar */}
-                        <div className="w-20 bg-gray-200/80 h-1.5 rounded-full mx-auto mt-1 overflow-hidden">
-                          <div 
-                            className={`h-full rounded-full transition-all duration-300 ${
-                              item.quantity === 0 ? 'bg-red-500' : item.quantity <= item.minStock ? 'bg-amber-500' : 'bg-emerald-500'
-                            }`}
-                            style={{ width: `${item.quantity === 0 ? 0 : Math.max(10, stockRatio)}%` }}
-                          />
-                        </div>
-                      </TableCell>
-
-                      {/* Min Stok */}
-                      <TableCell className="text-center font-semibold text-gray-700">
-                        <span className="px-2 py-0.5 bg-gray-50 border border-gray-200 rounded-md font-mono text-xs text-gray-600">
-                          {item.minStock}
-                        </span>
-                      </TableCell>
-
-                      <TableCell className="text-gray-600 text-xs font-medium">{item.unit}</TableCell>
-
-                      <TableCell className="text-gray-600 text-xs">
-                        <div className="flex items-center gap-1.5">
-                          <MapPin className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                          <span className="font-medium text-gray-700 truncate max-w-[140px]">{item.location || 'Gudang Utama'}</span>
-                        </div>
-                      </TableCell>
-
-                      <TableCell>
-                        <Badge variant={statusInfo.variant} className="font-semibold text-[11px] shadow-2xs">
-                          {statusInfo.label}
-                        </Badge>
-                      </TableCell>
-
-                      <TableCell className="text-right pr-6">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-8 w-8 text-gray-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg cursor-pointer active:scale-95 transition-all duration-200"
-                            onClick={() => openDetailModal(item)}
-                            title="Lihat Detail Barang"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-8 w-8 text-gray-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg cursor-pointer active:scale-95 transition-all duration-200"
-                            onClick={() => openEditModal(item)}
-                            title="Edit Barang"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-8 w-8 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg cursor-pointer active:scale-95 transition-all duration-200"
-                            onClick={() => handleDeleteSingle(item.id)}
-                            title="Hapus Barang"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                    {activeTab === 'history' ? (
+            <div className="overflow-x-auto">
+              <Table className="min-w-[900px]">
+                <TableHeader>
+                  <TableRow className="bg-gray-50/70 hover:bg-gray-50/70">
+                    <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 pl-4">Tanggal</TableHead>
+                    <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11">Jenis</TableHead>
+                    <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11">Barang</TableHead>
+                    <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 text-right pr-6">Qty</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="divide-y divide-gray-100 animate-fade-in">
+                  {isLoadingHistory ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="h-44 text-center text-gray-500">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <RefreshCw className="w-8 h-8 text-emerald-500 animate-spin" />
+                          <p className="font-bold text-gray-700 text-sm">Memuat riwayat stok...</p>
                         </div>
                       </TableCell>
                     </TableRow>
-                  );
-                })}
+                  ) : historyError ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="h-44 text-center text-gray-500">
+                        <div className="flex flex-col items-center justify-center gap-2 text-red-500">
+                          <AlertTriangle className="w-8 h-8 mb-2" />
+                          <p className="font-bold text-sm">{historyError}</p>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : paginatedHistory.length > 0 ? paginatedHistory.map((trx) => {
+                    let displayType = 'Barang Masuk';
+                    let displayQty = trx.quantity > 0 ? `+${trx.quantity}` : `${trx.quantity}`;
+                    let variant = 'success';
+                    
+                    if (trx.type === 'out') {
+                        displayType = 'Barang Keluar';
+                        displayQty = trx.quantity > 0 ? `-${trx.quantity}` : `${trx.quantity}`;
+                        variant = 'warning';
+                    } else if (trx.type === 'in') {
+                        displayType = 'Barang Masuk';
+                        displayQty = trx.quantity > 0 ? `+${trx.quantity}` : `${trx.quantity}`;
+                    } else if (trx.type === 'adjustment') {
+                        if (trx.quantity < 0) {
+                            displayType = 'Barang Keluar';
+                            displayQty = `${trx.quantity}`;
+                            variant = 'warning';
+                        } else {
+                            displayType = 'Barang Masuk';
+                            displayQty = `+${trx.quantity}`;
+                        }
+                    }
 
-                {filteredItems.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={9} className="h-44 text-center text-gray-500">
-                      <div className="flex flex-col items-center justify-center gap-2">
-                        <Boxes className="w-9 h-9 text-gray-300" />
-                        <p className="font-bold text-gray-700 text-sm">Tidak ada data barang yang sesuai.</p>
-                        <p className="text-xs text-gray-400">Coba ubah kata kunci pencarian atau bersihkan filter.</p>
-                      </div>
-                    </TableCell>
+                    const item = staffStocks.find(s => s.id === trx.stockId);
+                    const itemName = item ? item.name : 'Barang tidak ditemukan';
+                    const displayItem = `${itemName}${trx.size ? ` (${trx.size})` : ''}`;
+
+                    const dateFormatted = new Intl.DateTimeFormat('id-ID', {
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric'
+                    }).format(new Date(trx.createdAt));
+
+                    return (
+                      <TableRow key={trx.id} className="hover:bg-gray-50/60">
+                        <TableCell className="pl-4 text-xs font-medium text-gray-600 whitespace-nowrap">{dateFormatted}</TableCell>
+                        <TableCell>
+                          <Badge variant={variant as any} className="font-semibold text-[11px] shadow-2xs">
+                            {displayType}
+                          </Badge>
+                          {trx.referenceType && (
+                            <span className="ml-2 text-[10px] text-gray-400 capitalize hidden sm:inline-block">({trx.referenceType})</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-xs font-bold text-gray-900">{displayItem}</TableCell>
+                        <TableCell className={`text-right pr-6 text-xs font-black ${trx.quantity < 0 || trx.type === 'out' ? 'text-red-600' : 'text-emerald-600'}`}>
+                          {displayQty}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  }) : (
+                    <TableRow>
+                      <TableCell colSpan={4} className="h-44 text-center text-gray-500">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <Boxes className="w-9 h-9 text-gray-300" />
+                          <p className="font-bold text-gray-700 text-sm">Belum ada riwayat stok.</p>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+  <div className="overflow-x-auto">
+              <Table className="min-w-[900px]">
+                <TableHeader>
+                  <TableRow className="bg-gray-50/70 hover:bg-gray-50/70">
+                    <TableHead className="w-12 text-center pl-4">
+                      <Checkbox 
+                        checked={selectedIds.size > 0 && selectedIds.size === filteredItems.length}
+                        onCheckedChange={toggleSelectAll}
+                        aria-label="Pilih semua"
+                      />
+                    </TableHead>
+                    <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11">
+                      Nama Barang
+                    </TableHead>
+                    <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11">
+                      Kategori
+                    </TableHead>
+                    <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 text-center">
+                      Stok Saat Ini
+                    </TableHead>
+                    <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 text-center whitespace-nowrap">
+                      Min Stok
+                    </TableHead>
+                    <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11">
+                      Satuan
+                    </TableHead>
+                    <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11">
+                      Gudang Lokasi
+                    </TableHead>
+                    <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11">
+                      Status
+                    </TableHead>
+                    <TableHead className="text-right pr-6 text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap min-w-[120px]">
+                      Aksi
+                    </TableHead>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-
+                </TableHeader>
+                
+                <TableBody key={activeTab} className="divide-y divide-gray-100 animate-fade-in">
+                  {paginatedData.map((item) => {
+                    const statusInfo = getStockStatus(item);
+                    const stockRatio = item.minStock > 0 ? Math.min(100, Math.round((item.quantity / (item.minStock * 2)) * 100)) : 100;
+                    
+                    return (
+                      <TableRow key={item.id} className={selectedIds.has(item.id) ? "bg-emerald-50/40" : "hover:bg-gray-50/60"}>
+                        <TableCell className="pl-4">
+                          <Checkbox 
+                            checked={selectedIds.has(item.id)}
+                            onCheckedChange={() => toggleSelect(item.id)}
+                            aria-label={`Pilih ${item.name}`}
+                          />
+                        </TableCell>
+  
+                        <TableCell className="font-medium text-gray-900 py-3.5">
+                          <div className="flex flex-col">
+                            <span className="font-bold text-gray-900 text-sm hover:text-emerald-700 cursor-pointer" onClick={() => openDetailModal(item)}>
+                              {item.name}
+                            </span>
+                            {item.notes && (
+                              <span className="text-[11px] text-gray-500 truncate max-w-[240px] mt-0.5" title={item.notes}>
+                                {item.notes}
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+  
+                        <TableCell>
+                          <span className={cn(
+                            "inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap",
+                            "bg-slate-50 text-slate-700 border border-slate-200/80 shadow-2xs"
+                          )}>
+                            {item.category}
+                          </span>
+                        </TableCell>
+  
+                        {/* Stok Saat Ini with quick tactile +/- buttons */}
+                        <TableCell className="text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button 
+                              type="button"
+                              onClick={() => handleQuickAdjust(item.id, -1, item.name, item.quantity)}
+                              disabled={item.quantity <= 0 || item.hasSizes}
+                              className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-150 active:scale-90 disabled:opacity-20 disabled:hover:bg-transparent disabled:hover:text-gray-400 cursor-pointer disabled:cursor-not-allowed"
+                              title={item.hasSizes ? "Item dengan ukuran tidak bisa di-adjust cepat" : "Kurangi 1 unit"}
+                            >
+                              <MinusCircle className="w-4 h-4" />
+                            </button>
+  
+                            <div className="w-12 text-center">
+                              <span className={`text-base font-black tracking-tight ${
+                                item.quantity === 0 ? 'text-red-600' : item.quantity <= item.minStock ? 'text-amber-600' : 'text-gray-900'
+                              }`}>
+                                {item.quantity}
+                              </span>
+                            </div>
+  
+                            <button 
+                              type="button"
+                              onClick={() => handleQuickAdjust(item.id, 1, item.name, item.quantity)}
+                              disabled={item.hasSizes}
+                              className="p-1 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all duration-150 active:scale-90 disabled:opacity-20 disabled:hover:bg-transparent disabled:hover:text-gray-400 cursor-pointer disabled:cursor-not-allowed"
+                              title={item.hasSizes ? "Item dengan ukuran tidak bisa di-adjust cepat" : "Tambah 1 unit"}
+                            >
+                              <PlusCircle className="w-4 h-4" />
+                            </button>
+                          </div>
+  
+                          {/* Visual stock meter bar */}
+                          <div className="w-20 bg-gray-200/80 h-1.5 rounded-full mx-auto mt-1 overflow-hidden">
+                            <div 
+                              className={`h-full rounded-full transition-all duration-300 ${
+                                item.quantity === 0 ? 'bg-red-500' : item.quantity <= item.minStock ? 'bg-amber-500' : 'bg-emerald-500'
+                              }`}
+                              style={{ width: `${item.quantity === 0 ? 0 : Math.max(10, stockRatio)}%` }}
+                            />
+                          </div>
+                        </TableCell>
+  
+                        {/* Min Stok */}
+                        <TableCell className="text-center font-semibold text-gray-700">
+                          <span className="px-2 py-0.5 bg-gray-50 border border-gray-200 rounded-md font-mono text-xs text-gray-600">
+                            {item.minStock}
+                          </span>
+                        </TableCell>
+  
+                        <TableCell className="text-gray-600 text-xs font-medium">{item.unit}</TableCell>
+  
+                        <TableCell className="text-gray-600 text-xs">
+                          <div className="flex items-center gap-1.5">
+                            <MapPin className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                            <span className="font-medium text-gray-700 truncate max-w-[140px]">{item.location || 'Gudang Utama'}</span>
+                          </div>
+                        </TableCell>
+  
+                        <TableCell>
+                          <Badge variant={statusInfo.variant} className="font-semibold text-[11px] shadow-2xs">
+                            {statusInfo.label}
+                          </Badge>
+                        </TableCell>
+  
+                        <TableCell className="text-right pr-6">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8 text-gray-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg cursor-pointer active:scale-95 transition-all duration-200"
+                              onClick={() => openDetailModal(item)}
+                              title="Lihat Detail Barang"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8 text-gray-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg cursor-pointer active:scale-95 transition-all duration-200"
+                              onClick={() => openEditModal(item)}
+                              title="Edit Barang"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg cursor-pointer active:scale-95 transition-all duration-200"
+                              onClick={() => handleDeleteSingle(item.id)}
+                              title="Hapus Barang"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+  
+                  {filteredItems.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={9} className="h-44 text-center text-gray-500">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <Boxes className="w-9 h-9 text-gray-300" />
+                          <p className="font-bold text-gray-700 text-sm">Tidak ada data barang yang sesuai.</p>
+                          <p className="text-xs text-gray-400">Coba ubah kata kunci pencarian atau bersihkan filter.</p>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          )}
           {/* Pagination Footer */}
           <div className="p-4 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4 bg-white">
             <span className="text-xs font-medium text-gray-500">
-              Menampilkan <span className="font-bold text-gray-900">{filteredItems.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}</span> - <span className="font-bold text-gray-900">{Math.min(currentPage * itemsPerPage, filteredItems.length)}</span> dari <span className="font-bold text-gray-900">{filteredItems.length}</span> barang stok
+              Menampilkan <span className="font-bold text-gray-900">
+                {activeTab === 'history' 
+                  ? (filteredHistory.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1)
+                  : (filteredItems.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1)}
+              </span> - <span className="font-bold text-gray-900">
+                {activeTab === 'history'
+                  ? Math.min(currentPage * itemsPerPage, filteredHistory.length)
+                  : Math.min(currentPage * itemsPerPage, filteredItems.length)}
+              </span> dari <span className="font-bold text-gray-900">
+                {activeTab === 'history' ? filteredHistory.length : filteredItems.length}
+              </span> baris
             </span>
             <div className="flex gap-2 w-full sm:w-auto">
               <Button 
@@ -825,21 +1019,21 @@ export default function StaffStock() {
                 Sebelumnya
               </Button>
               <div className="flex items-center px-2 text-xs font-semibold text-gray-700">
-                {currentPage} / {totalPages}
+                {currentPage} / {activeTab === 'history' ? historyTotalPages : totalPages}
               </div>
               <Button 
                 variant="outline" 
                 size="sm" 
                 className="flex-1 sm:flex-none text-xs rounded-xl cursor-pointer active:scale-95 transition-all duration-200" 
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} 
-                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage(p => Math.min(activeTab === 'history' ? historyTotalPages : totalPages, p + 1))} 
+                disabled={currentPage === (activeTab === 'history' ? historyTotalPages : totalPages)}
               >
                 Selanjutnya
                 <ChevronRight className="w-3.5 h-3.5 ml-1" />
               </Button>
             </div>
           </div>
-        </CardContent>
+</CardContent>
       </Card>      {/* Detail / Edit Dialog Modal with Uniform Top Pill Tabs and Registration Form Style */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent hideClose className="w-[95vw] max-w-2xl sm:w-full max-h-[92vh] bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border-0 overflow-y-auto hide-scrollbar">
