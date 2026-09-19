@@ -287,7 +287,7 @@ function mapPilgrimToBackend(
       pkg?.id,
 
     kloter_id:
-      grp?.id || null,
+      grp?.backendId || null,
 
     pilgrim_id:
       p.pilgrimId || null,

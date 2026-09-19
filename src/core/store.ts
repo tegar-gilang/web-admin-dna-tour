@@ -198,15 +198,16 @@ export type RoomItem = {
 };
 export type StaffStockItem = {
   id: string;
-
+  code: string;
   name: string;
   category: string;
   quantity: number;
   minStock: number;
   unit: string;
-  location?: string;
-  lastUpdated?: string;
-  notes?: string;
+  location: string | null;
+  lastUpdated: string;
+  notes: string | null;
+  hasSizes?: boolean;
 };
 
 
@@ -317,6 +318,7 @@ type StoreState = {
   deleteStaffStock: (id: string) => void;
   deleteStaffStocks: (ids: string[]) => void;
   adjustStockQuantity: (id: string, delta: number) => void;
+  setStaffStocks: (items: StaffStockItem[]) => void;
 
   // Finance actions
   addTransaction: (tx: FinanceTransaction) => void;
@@ -748,6 +750,7 @@ export const useStore = create<StoreState>((set) => ({
   staffStocks: [
     {
       id: "STK-101",
+      code: "STK-101",
       name: "Kain Ihram Pria (Set)",
       category: "Perlengkapan Jamaah",
       quantity: 85,
@@ -759,6 +762,7 @@ export const useStore = create<StoreState>((set) => ({
     },
     {
       id: "STK-102",
+      code: "STK-102",
       name: "Mukena & Kerudung Jamaah",
       category: "Perlengkapan Jamaah",
       quantity: 110,
@@ -770,6 +774,7 @@ export const useStore = create<StoreState>((set) => ({
     },
     {
       id: "STK-103",
+      code: "STK-103",
       name: "Seragam Batik Jamaah",
       category: "Perlengkapan Jamaah",
       quantity: 140,
@@ -781,6 +786,7 @@ export const useStore = create<StoreState>((set) => ({
     },
     {
       id: "STK-104",
+      code: "STK-104",
       name: "Rompi Staf & Tour Leader",
       category: "Seragam Staf",
       quantity: 12,
@@ -792,6 +798,7 @@ export const useStore = create<StoreState>((set) => ({
     },
     {
       id: "STK-105",
+      code: "STK-105",
       name: "Walkie Talkie & Audio Set",
       category: "Peralatan Operasional",
       quantity: 18,
@@ -803,6 +810,7 @@ export const useStore = create<StoreState>((set) => ({
     },
     {
       id: "STK-106",
+      code: "STK-106",
       name: "Tas Selempang Paspor Jamaah",
       category: "Dokumen & Identitas",
       quantity: 210,
@@ -814,6 +822,7 @@ export const useStore = create<StoreState>((set) => ({
     },
     {
       id: "STK-107",
+      code: "STK-107",
       name: "Tali Lanyard & Card Holder ID",
       category: "Dokumen & Identitas",
       quantity: 8,
@@ -825,6 +834,7 @@ export const useStore = create<StoreState>((set) => ({
     },
     {
       id: "STK-108",
+      code: "STK-108",
       name: "Kit P3K & Obat Pertolongan Pertama",
       category: "Kesehatan",
       quantity: 9,
@@ -836,6 +846,7 @@ export const useStore = create<StoreState>((set) => ({
     },
     {
       id: "STK-109",
+      code: "STK-109",
       name: "Payung Lipat Umrah",
       category: "Perlengkapan Jamaah",
       quantity: 0,
@@ -847,6 +858,7 @@ export const useStore = create<StoreState>((set) => ({
     },
     {
       id: "STK-110",
+      code: "STK-110",
       name: "Sabuk Ihram Multi-Pocket",
       category: "Perlengkapan Jamaah",
       quantity: 95,
@@ -1455,6 +1467,7 @@ export const useStore = create<StoreState>((set) => ({
       return item;
     })
   })),
+  setStaffStocks: (items) => set({ staffStocks: items }),
 
   // Finance actions
   addTransaction: (tx) => set((state) => {

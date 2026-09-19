@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '@/core/store';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { toast } from '@/lib/toast';
 import { exportMasterWorkbookToExcel } from '@/lib/export';
 import { dashboardService } from '@/core/services/dashboardService';
+import stockService from '@/core/services/stockService';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { 
   Users, 
@@ -50,8 +51,21 @@ export default function Dashboard() {
     staffStocks, 
     financeTransactions,
     financeExpenses,
-    schedules 
+    schedules,
+    setStaffStocks
   } = useStore();
+
+  useEffect(() => {
+    const fetchStocks = async () => {
+      try {
+        const data = await stockService.getStocks();
+        setStaffStocks(data as any);
+      } catch (err) {
+        console.error('Gagal mengambil data stok:', err);
+      }
+    };
+    fetchStocks();
+  }, [setStaffStocks]);
 
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
