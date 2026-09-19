@@ -790,7 +790,7 @@ export default function Pilgrims() {
             'Paket Umrah': p.umrahPackage || '-',
             'Kloter / Group': p.group || '-',
             'Tour Leader': p.tourLeader || '-',
-            'Mutawif Local': p.mutawifLocal || '-',
+            'Mutawif Local': (() => { const grp = groups.find(g => g.name === p.group || g.kloter === p.group || g.id === p.group || g.backendId === p.kloterId); return grp && grp.mutawifs && grp.mutawifs.length > 0 ? grp.mutawifs.map(m => m.name).join(', ') : (p.mutawifLocal || '-'); })(),
             'Hotel Makkah': p.hotelMakkah || p.hotel || '-',
             'Hotel Madinah': p.hotelMadinah || '-',
             'Tgl. Keberangkatan': formatIndoDate(p.departureDate),
@@ -2459,7 +2459,7 @@ export default function Pilgrims() {
                             tourLeader:
                               foundGrp?.tourLeader || formData.tourLeader,
                             mutawifLocal:
-                              foundGrp?.mutawif || formData.mutawifLocal,
+                              (foundGrp?.mutawifs && foundGrp.mutawifs.length > 0 ? foundGrp.mutawifs.map(m => m.name).join(', ') : foundGrp?.mutawif) || formData.mutawifLocal,
                           });
                         }}
                         className={`h-12 sm:h-13 w-full rounded-2xl border border-gray-300 bg-white px-4 sm:px-5 text-base ${

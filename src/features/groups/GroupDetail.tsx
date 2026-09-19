@@ -163,7 +163,7 @@ if (isLoadingGroup) {
   // Related Data for this Kloter
   const groupPilgrims = pilgrims.filter(p => p.group === group.name || p.group === group.kloter || p.group === group.id);
   const groupTourLeaders = tourLeaders.filter(t => t.group === group.name || t.group === group.kloter);
-  const groupMutawifs = mutawifs.filter(m => m.group === group.name || m.group === group.kloter);
+  const groupMutawifs = group.mutawifs || [];
   const groupEmergencies = emergencies.filter(e => e.group === group.name || e.group === group.kloter);
 
   // Demographics & Paspor Ready
@@ -356,7 +356,7 @@ if (isLoadingGroup) {
       'Paket Umrah': p.umrahPackage || '-',
       'Kloter': group.name,
       'Tour Leader': group.tourLeader,
-      'Muthawwif': group.mutawif,
+      'Muthawwif': group.mutawifs && group.mutawifs.length > 0 ? group.mutawifs.map(m => m.name).join(', ') : (group.mutawif || '-'),
       'Hotel Makkah': p.hotelMakkah || p.hotel || '-',
       'Hotel Madinah': p.hotelMadinah || '-'
     }));
@@ -477,9 +477,7 @@ if (isLoadingGroup) {
                 <p className="text-sm sm:text-base font-bold tracking-tight text-gray-900 truncate max-w-[180px]" title={group.tourLeader}>
                   TL: {group.tourLeader || 'Belum ditugaskan'}
                 </p>
-                <p className="text-xs text-gray-600 truncate max-w-[180px]" title={group.mutawif}>
-                  MW: {group.mutawif || 'Belum ditugaskan'}
-                </p>
+                <p className="text-xs text-gray-600 truncate max-w-[180px]" title={group.mutawifs && group.mutawifs.length > 0 ? group.mutawifs.map(m => m.name).join(", ") : group.mutawif}>MW: {group.mutawifs && group.mutawifs.length > 0 ? group.mutawifs.map(m => m.name).join(", ") : (group.mutawif || 'Belum ditugaskan')}</p>
               </div>
               <div className="w-10 h-10 rounded-full bg-[#edf5ff] text-[#2563eb] flex items-center justify-center shrink-0">
                 <Briefcase className="w-5 h-5" />
@@ -660,7 +658,7 @@ if (isLoadingGroup) {
                 </div>
                 <div className="flex justify-between items-center py-3">
                   <span className="text-xs text-gray-500 font-medium">Muthawwif Lokal KSA</span>
-                  <span className="font-bold text-sm text-gray-900">{group.mutawif || 'Belum Ditugaskan'}</span>
+                  <span className="font-bold text-sm text-gray-900">{group.mutawifs && group.mutawifs.length > 0 ? group.mutawifs.map(m => m.name).join(", ") : (group.mutawif || 'Belum Ditugaskan')}</span>
                 </div>
               </div>
             </Card>
@@ -1280,7 +1278,7 @@ if (isLoadingGroup) {
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[10px] font-bold text-blue-800 bg-white border border-blue-200">
                   Muthawwif Lokal
                 </span>
-                <p className="font-bold text-gray-900 text-sm">{group.mutawif || 'Belum ditugaskan'}</p>
+                <p className="font-bold text-gray-900 text-sm">{group.mutawifs && group.mutawifs.length > 0 ? group.mutawifs.map(m => m.name).join(", ") : (group.mutawif || 'Belum ditugaskan')}</p>
                 <p className="text-xs text-gray-600 flex items-center gap-1.5">
                   <MapPin className="w-3.5 h-3.5 text-blue-600" /> Pembimbing Ibadah & Ziyarah KSA
                 </p>

@@ -1,5 +1,5 @@
 import { apiClient } from './apiClient';
-import { Group } from '../store';
+import { Group, Mutawif } from '../store';
 
 export interface BackendKloter {
   id: string;
@@ -15,6 +15,17 @@ export interface BackendKloter {
   tour_leader?: string;
   mutawif_local?: string;
   jamaah_count?: number;
+  mutawifs?: Array<{
+    id: string;
+    code: string;
+    name: string;
+    language: string;
+    experience: string | null;
+    status: string;
+    pivot?: {
+      assigned_at: string;
+    };
+  }>;
 }
 
 export interface KloterPayload {
@@ -92,6 +103,16 @@ function mapBackendToGroup(backend: BackendKloter): Group {
     status: mapBackendStatusToUI(backend.status),
     hotelMakkahId: backend.hotel_makkah_id || null,
     hotelMadinahId: backend.hotel_madinah_id || null,
+    mutawifs: backend.mutawifs ? backend.mutawifs.map(m => ({
+      id: m.code || m.id,
+      backendId: m.id,
+      code: m.code,
+      name: m.name,
+      language: m.language || '-',
+      experience: m.experience || '-',
+      group: backend.name, // for backward compatibility
+      status: m.status === 'active' ? 'Active' : m.status === 'standby' ? 'Standby' : m.status,
+    })) : [],
   };
 }
 

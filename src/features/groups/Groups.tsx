@@ -108,7 +108,7 @@ export default function Groups() {
         (g.formId && g.formId.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (g.kloter && g.kloter.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (g.tourLeader && g.tourLeader.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (g.mutawif && g.mutawif.toLowerCase().includes(searchTerm.toLowerCase()));
+        ((g.mutawifs && g.mutawifs.some(m => m.name.toLowerCase().includes(searchTerm.toLowerCase()))) || (g.mutawif && g.mutawif.toLowerCase().includes(searchTerm.toLowerCase())));
 
       return matchesSearch;
     });
@@ -274,7 +274,7 @@ export default function Groups() {
       'Kode Kloter': g.kloter,
       'Jumlah Jamaah': pilgrims.filter(p => p.group === g.name).length,
       'Tour Leader': g.tourLeader,
-      'Mutawwif': g.mutawif,
+      'Mutawwif': g.mutawifs && g.mutawifs.length > 0 ? g.mutawifs.map(m => m.name).join(', ') : (g.mutawif || '-'),
       'Status': g.status,
     }));
     exportToExcel(exportData, 'Data_Kloter_DNA_Tour', 'Laporan Data Kloter & Rombongan - DNA Tour');
@@ -653,7 +653,7 @@ export default function Groups() {
                       <span className="text-sm text-gray-900 font-bold whitespace-nowrap">{group.tourLeader || '-'}</span>
                     </TableCell>
                     <TableCell className="py-4 whitespace-nowrap">
-                      <span className="text-sm text-gray-900 font-bold whitespace-nowrap">{group.mutawif || '-'}</span>
+                      <div className="flex flex-col gap-1">{group.mutawifs && group.mutawifs.length > 0 ? group.mutawifs.map(m => (<span key={m.id} className="text-sm text-gray-900 font-bold whitespace-nowrap">{m.name}</span>)) : <span className="text-sm text-gray-400 font-medium">-</span>}</div>
                     </TableCell>
                     <TableCell className="py-4 whitespace-nowrap">
                       <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase border shadow-2xs ${

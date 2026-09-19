@@ -95,6 +95,7 @@ export type Group = {
   pilgrims: number;
   tourLeader: string;
   mutawif: string;
+  mutawifs?: Mutawif[];
   status: string;
   hotelMakkahId?: string | null;
   hotelMadinahId?: string | null;
