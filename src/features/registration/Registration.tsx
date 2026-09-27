@@ -680,11 +680,14 @@ export default function Registration() {
           30000000,
 
         paidAmount:
-          detailData.paidAmount ||
+          detailData.paidAmount ??
           (detailData.paymentOption ===
           'Bayar Lunas'
             ? 30000000
-            : 10000000),
+            : detailData.paymentOption ===
+              'DP'
+            ? 10000000
+            : 0),
 
         paymentMethod:
           detailData.paymentMethod ||

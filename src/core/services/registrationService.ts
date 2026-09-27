@@ -373,9 +373,24 @@ function mapPilgrimToBackend(
   // ============================================================
 
   if (
-    p.paidAmount &&
+    p.paidAmount !== undefined &&
+    p.paidAmount !== null &&
     p.paidAmount > 0
   ) {
+    const normalizeMethod = (method?: string) => {
+      if (!method) return 'bca_transfer';
+      const m = method.toLowerCase();
+      if (m.includes('bsi')) return 'bsi_transfer';
+      if (m.includes('mandiri')) return 'mandiri_transfer';
+      if (m.includes('bca')) return 'bca_transfer';
+      if (m.includes('cash') || m.includes('tunai')) return 'cash';
+      if (m.includes('qris') || m.includes('edc')) return 'edc_qris';
+      if (['cash', 'edc_qris', 'bsi_transfer', 'bca_transfer', 'mandiri_transfer'].includes(method)) {
+        return method;
+      }
+      return 'bca_transfer';
+    };
+
     payload.initial_payment = {
       amount:
         Number(p.paidAmount),
@@ -387,11 +402,14 @@ function mapPilgrimToBackend(
           : 'down_payment',
 
       payment_method:
-        'bca_transfer',
+        normalizeMethod(p.paymentMethod),
 
       payment_date:
         p.paymentDate ||
         payload.registration_date,
+
+      notes:
+        p.paymentNotes || undefined,
     };
   }
 
