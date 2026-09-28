@@ -79,6 +79,10 @@ export type Pilgrim = {
   paymentOption?: 'DP' | 'Bayar Lunas' | 'Belum Bayar';
   totalAmount?: number;
   paidAmount?: number;
+  // Sisa tagihan berdasarkan seluruh payment yang sudah tercatat di backend.
+  // JANGAN gunakan totalAmount - paidAmount pada Form Edit karena paidAmount
+  // di sana merepresentasikan nominal pembayaran BARU, bukan total yang sudah dibayar.
+  remainingCost?: number;
   paymentMethod?: string;
   paymentDate?: string;
   paymentNotes?: string;

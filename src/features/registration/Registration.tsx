@@ -647,6 +647,7 @@ export default function Registration() {
   const openEditModal = async (
     p: Pilgrim
   ) => {
+    console.log('OPEN EDIT MODAL:', p.id);
     try {
       setFetchingRegistrations(true);
 
@@ -654,6 +655,8 @@ export default function Registration() {
         await registrationService.getRegistration(
           p.id
         );
+
+      console.log('DETAIL DATA SEBELUM FORM:', detailData);
 
       setEditingPilgrim(detailData);
 
@@ -668,39 +671,21 @@ export default function Registration() {
           !!detailData.paymentDate
       });
 
-      setFormData({
+    setFormData((prev) => {
+      const next = {
         ...detailData,
+        paymentOption: detailData.paymentOption || 'DP',
+        totalAmount: detailData.totalAmount || 30000000,
+        paidAmount: 0,
+        paymentMethod: '',
+        paymentDate: todayStr,
+        paymentNotes: ''
+      };
 
-        paymentOption:
-          detailData.paymentOption ||
-          'DP',
+      console.log('EDIT FORM DATA:', next);
 
-        totalAmount:
-          detailData.totalAmount ||
-          30000000,
-
-        paidAmount:
-          detailData.paidAmount ??
-          (detailData.paymentOption ===
-          'Bayar Lunas'
-            ? 30000000
-            : detailData.paymentOption ===
-              'DP'
-            ? 10000000
-            : 0),
-
-        paymentMethod:
-          detailData.paymentMethod ||
-          'Transfer BCA',
-
-        paymentDate:
-          detailData.paymentDate ||
-          todayStr,
-
-        paymentNotes:
-          detailData.paymentNotes ||
-          ''
-      });
+      return next;
+    });
 
       setModalMode('edit');
       setIsModalOpen(true);
@@ -780,18 +765,21 @@ export default function Registration() {
       'Belum Bayar';
 
     const totalAmt =
-      Number(
-        formData.totalAmount
-      ) || 30000000;
+      Number(formData.totalAmount) ||
+      30000000;
+
+    const isEdit =
+      modalMode === 'edit';
 
     const paidAmt =
-      payOption === 'Bayar Lunas'
-        ? totalAmt
-        : payOption === 'DP'
-          ? Number(
-              formData.paidAmount
-            ) || 10000000
-          : 0;
+      isEdit
+        ? Number(formData.paidAmount) || 0
+        : payOption === 'Bayar Lunas'
+          ? totalAmt
+          : payOption === 'DP'
+            ? Number(formData.paidAmount) ||
+              10000000
+            : 0;
 
     const payMethod =
       formData.paymentMethod ||
@@ -2063,11 +2051,19 @@ export default function Registration() {
 
                   <button
                     type="button"
-                    onClick={() =>
-                      setModalMode(
-                        'edit'
-                      )
-                    }
+                    onClick={() => {
+                      setModalMode('edit');
+                      // Reset field pembayaran baru agar tidak carry-over
+                      // nilai total_paid dari backend saat berpindah dari tab Detail.
+                      // total_paid tetap aman di editingPilgrim dan tidak diubah.
+                      setFormData((prev) => ({
+                        ...prev,
+                        paidAmount: 0,
+                        paymentMethod: '',
+                        paymentDate: todayStr,
+                        paymentNotes: '',
+                      }));
+                    }}
                     className={`px-6 py-2.5 rounded-full text-sm sm:text-base font-bold transition-all duration-200 cursor-pointer active:scale-95 select-none ${
                       modalMode ===
                       'edit'
@@ -3625,10 +3621,14 @@ export default function Registration() {
                         Rp{' '}
                         {Math.max(
                           0,
-                          (formData.totalAmount ||
-                            0) -
-                            (formData.paidAmount ||
-                              0)
+                          // Mode EDIT: gunakan remainingCost dari backend
+                          // (total_paid sudah dihitung backend, bukan paidAmount
+                          // yang di sini = nominal pembayaran baru / default 0).
+                          // Mode CREATE: gunakan formula totalAmount - paidAmount.
+                          editingPilgrim
+                            ? (editingPilgrim.remainingCost ?? 0)
+                            : (formData.totalAmount || 0) -
+                                (formData.paidAmount || 0)
                         ).toLocaleString(
                           'id-ID'
                         )}
@@ -3642,14 +3642,7 @@ export default function Registration() {
                       </label>
 
                       <Input
-                        value={
-                          (formData as any)
-                            .paymentNotes ||
-                          (formData.paymentOption ===
-                          'DP'
-                            ? 'Uang Muka Pendaftaran'
-                            : 'Pelunasan Pendaftaran')
-                        }
+                        value={(formData as any).paymentNotes || ''}
                         onChange={(e) =>
                           setFormData({
                             ...formData,

@@ -634,6 +634,14 @@ function mapBackendToPilgrim(
         backend.total_paid
       ),
 
+    // Sisa tagihan berdasarkan seluruh payment yang sudah tercatat.
+    // Digunakan di Form Edit sebagai pengganti formula totalAmount - paidAmount
+    // karena paidAmount di Form Edit mewakili nominal pembayaran BARU (default 0).
+    remainingCost:
+      Number(
+        backend.remaining_cost
+      ),
+
     paymentMethod:
       backend.payments?.[0]
         ?.payment_method ||
