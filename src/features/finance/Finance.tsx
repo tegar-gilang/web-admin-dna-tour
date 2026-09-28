@@ -86,6 +86,40 @@ export default function Finance() {
     setFinanceSummary
   } = useStore();
 
+    const formatIndoDate = (
+    dateStr?: string,
+    fallback: string = '-'
+  ) => {
+    if (!dateStr) return fallback;
+
+    try {
+      const d = new Date(dateStr);
+
+      if (isNaN(d.getTime())) {
+        return dateStr;
+      }
+
+      const months = [
+        'Januari',
+        'Februari',
+        'Maret',
+        'April',
+        'Mei',
+        'Juni',
+        'Juli',
+        'Agustus',
+        'September',
+        'Oktober',
+        'November',
+        'Desember'
+      ];
+
+      return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+    } catch {
+      return dateStr;
+    }
+  };
+
   useEffect(() => {
     const fetchPayments = async () => {
       setFinanceLoading(true);
@@ -1986,7 +2020,9 @@ const handleConfirmQuickPay = async () => {
                       </div>
                       <div className="flex justify-between py-1.5 items-center">
                         <span className="text-gray-500 font-medium">Tanggal Transaksi</span>
-                        <span className="font-semibold text-gray-900">{selectedDetailTx.date}</span>
+                        <span className="font-semibold text-gray-900">
+                          {formatIndoDate(selectedDetailTx.date)}
+                        </span>
                       </div>
                       <div className="flex justify-between py-1.5 items-center">
                         <span className="text-gray-500 font-medium">Bukti</span>
@@ -2617,8 +2653,13 @@ const handleConfirmQuickPay = async () => {
                         <span className="font-bold text-gray-900">{selectedDetailReceivable.paymentMethod || 'Transfer BCA'}</span>
                       </div>
                       <div className="flex justify-between p-3 items-center">
-                        <span className="text-gray-500 font-medium">Tanggal Pembayaran Awal</span>
-                        <span className="font-bold text-gray-900">{selectedDetailReceivable.paymentDate || selectedDetailReceivable.registrationDate || '10 Jan 2026'}</span>
+                        <span className="text-gray-500 font-medium">TanggalPembayaran Awal</span>
+                        <span className="font-bold text-gray-900">
+                          {formatIndoDate(
+                            selectedDetailReceivable.paymentDate ||
+                              selectedDetailReceivable.registrationDate
+                          )}
+                        </span>
                       </div>
                       {selectedDetailReceivable.paymentNotes && (
                         <div className="p-3">
@@ -2669,7 +2710,9 @@ const handleConfirmQuickPay = async () => {
                             <div key={tx.id} className="bg-white p-3 rounded-xl border border-gray-200 shadow-2xs flex items-center justify-between gap-2">
                               <div>
                                 <span className="font-bold text-gray-900 block text-xs">{tx.type}</span>
-                                <span className="text-[11px] text-gray-500 font-mono font-medium">{tx.id} • {tx.date} • {tx.paymentMethod}</span>
+                                <span className="text-[11px] text-gray-500 font-mono font-medium">
+                                  {tx.id} • {formatIndoDate(tx.date)} • {tx.paymentMethod}
+                                </span>
                               </div>
                               <div className="flex items-center gap-2">
                                 <span className="font-bold text-emerald-700 text-sm">
