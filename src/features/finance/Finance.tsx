@@ -224,36 +224,58 @@ export default function Finance() {
   };
 
   const confirmDelete = async () => {
-    if (!deleteItemId) return;
+  if (!deleteItemId) return;
+
+  try {
     if (deleteItemType === 'Pengeluaran') {
-      try {
-        await expenseService.deleteExpense(deleteItemId);
-        setFinanceExpenses(financeExpenses.filter((e) => e.id !== deleteItemId));
-        const summary = await financeSummaryService.getSummary();
-        setFinanceSummary(summary);
-        toast('Data pengeluaran berhasil dihapus.', 'success');
-      } catch (err) {
-        toast(`Gagal menghapus pengeluaran: ${err instanceof Error ? err.message : String(err)}`,'error');
-        return;
-      }
+      await expenseService.deleteExpense(deleteItemId);
+
+      setFinanceExpenses(
+        financeExpenses.filter((e) => e.id !== deleteItemId)
+      );
+
+      const summary = await financeSummaryService.getSummary();
+      setFinanceSummary(summary);
+
+      toast('Data pengeluaran berhasil dihapus.', 'success');
+    } else if (deleteItemType === 'Pemasukan Lain') {
+      await otherIncomeService.deleteOtherIncome(deleteItemId);
+
+      const otherIncomes = await otherIncomeService.getOtherIncomes();
+      const payments = await financeService.getPayments();
+
+      setFinanceTransactions([...payments, ...otherIncomes]);
+
+      const summary = await financeSummaryService.getSummary();
+      setFinanceSummary(summary);
+
+      toast('Pemasukan lain-lain berhasil dihapus.', 'success');
     } else {
-      try {
-        await financeService.deletePayment(deleteItemId);
-        const refreshed = await financeService.getPayments();
-        setFinanceTransactions(refreshed);
-        const summary = await financeSummaryService.getSummary();
-        setFinanceSummary(summary);
-        toast('Data pembayaran berhasil dihapus.', 'success');
-      } catch (err) {
-        toast(`Gagal menghapus pembayaran: ${err instanceof Error ? err.message : String(err)}`,'error');
-        return;
-      }
+      await financeService.deletePayment(deleteItemId);
+
+      const payments = await financeService.getPayments();
+      const otherIncomes = await otherIncomeService.getOtherIncomes();
+
+      setFinanceTransactions([...payments, ...otherIncomes]);
+
+      const summary = await financeSummaryService.getSummary();
+      setFinanceSummary(summary);
+
+      toast('Data pembayaran berhasil dihapus.', 'success');
     }
-    // Cleanup dialog state
+
     setDeleteItemId(null);
     setDeleteItemType(null);
     setIsDeleteDialogOpen(false);
-  };
+  } catch (err) {
+    toast(
+      `Gagal menghapus data: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+      'error'
+    );
+  }
+};
 
   // Selected Data State
   const [selectedPilgrimForPay, setSelectedPilgrimForPay] = useState<Pilgrim | null>(null);

@@ -51,6 +51,7 @@ import {
 } from '@/components/ui/Dialog';
 import { exportMasterWorkbookToExcel } from '@/lib/export';
 import { kloterService } from '@/core/services/kloterService';
+import { packageService } from '@/core/services/packageService';
 import {
   tourLeaderService,
   getPrimaryTourLeader,
@@ -67,6 +68,8 @@ export default function Pilgrims() {
     setPilgrims,
     groups,
     setGroups,
+    packages,
+    setPackages,
     tourLeaders,
     setTourLeaders,
     mutawifs,
@@ -142,13 +145,15 @@ export default function Pilgrims() {
   useEffect(() => {
     const fetchKlotersAndTourLeaders = async () => {
       try {
-        const [klotersData, tourLeadersData] = await Promise.all([
+        const [klotersData, tourLeadersData, packagesData] = await Promise.all([
           kloterService.getKloters(),
           tourLeaderService.getTourLeaders(),
+          packageService.getPackages(),
         ]);
 
         setGroups(klotersData);
         setTourLeaders(tourLeadersData);
+        setPackages(packagesData);
       } catch (error) {
         console.error('Gagal mengambil data kloter/tour leader:', error);
       }
@@ -472,6 +477,7 @@ export default function Pilgrims() {
       tourLeader: '',
       mutawifLocal: '',
       umrahPackage: '',
+      packageId: '',
       hotelMakkah: '',
       hotelMadinah: '',
       hotel: '',
@@ -594,7 +600,7 @@ export default function Pilgrims() {
           formData.emergencyContact?.trim() ||
           null,
 
-        package_id: null,
+        package_id: formData.packageId ?? null,
         kloter_id: formData.kloterId ?? null,
 
         hotel_makkah:
@@ -2573,36 +2579,30 @@ export default function Pilgrims() {
 
                     <div className="sm:col-span-8">
                       <select
-                        value={
-                          formData.umrahPackage ||
-                          ''
-                        }
-                        onChange={(e) =>
+                        value={formData.packageId || ''}
+                        onChange={(e) => {
+                          const selectedPackage = packages.find(
+                            (pkg) => pkg.id === e.target.value
+                          );
+
                           setFormData({
                             ...formData,
-                            umrahPackage:
-                              e.target.value,
-                          })
-                        }
+                            packageId: e.target.value,
+                            umrahPackage: selectedPackage?.name || '',
+                          });
+                        }}
                         className="h-12 sm:h-13 w-full rounded-2xl border border-gray-300 bg-white px-4 sm:px-5 text-base focus:outline-none focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859] cursor-pointer"
                       >
                         <option value="">
                           Pilih Paket Umrah
                         </option>
 
-                        {[
-                          'Multazam',
-                          'Raudhah',
-                          'Yamani',
-                          'VIP 9 Hari',
-                          'Reguler 12 Hari',
-                          'Reguler 9 Hari',
-                        ].map((pkg) => (
+                        {packages.map((pkg) => (
                           <option
-                            key={pkg}
-                            value={pkg}
+                            key={pkg.id}
+                            value={pkg.id}
                           >
-                            {pkg}
+                            {pkg.name}
                           </option>
                         ))}
                       </select>

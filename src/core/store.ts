@@ -54,6 +54,7 @@ export type Pilgrim = {
   // Dokumen & Administrasi
   registrationDate?: string;
   departureDate?: string;
+  packageId?: string | null;
   umrahPackage?: string;
   ktp?: string;
   documentInfo?: string; // akte lahir / buku nikah / ijazah

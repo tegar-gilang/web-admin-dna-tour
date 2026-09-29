@@ -50,7 +50,7 @@ export default function RoomAllocation() {
   const [selectedKloter, setSelectedKloter] = useState<string>(() => {
     if (urlKloter) return urlKloter;
     if (groups.length > 0) return groups[0].name;
-    return "Kloter 4 Al-Barakah";
+    return "";
   });
 
   useEffect(() => {
