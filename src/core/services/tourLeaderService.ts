@@ -201,8 +201,8 @@ export function mapUIStatusToBackend(status: string): string {
 }
 
 export function getKloterTourLeaders(
-  kloterId: string,
-  tourLeaders: TourLeader[]
+  kloterId?: string | null,
+  tourLeaders?: TourLeader[]
 ): TourLeader[] {
   if (!kloterId || !tourLeaders || tourLeaders.length === 0) return [];
   return tourLeaders.filter((tl) =>
@@ -211,8 +211,8 @@ export function getKloterTourLeaders(
 }
 
 export function getPrimaryTourLeader(
-  kloterId: string,
-  tourLeaders: TourLeader[]
+  kloterId?: string | null,
+  tourLeaders?: TourLeader[]
 ): TourLeader | null {
   const assigned = getKloterTourLeaders(kloterId, tourLeaders);
   if (assigned.length === 0) return null;

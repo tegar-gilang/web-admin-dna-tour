@@ -19,6 +19,7 @@ import { exportRoomListToPdf } from '@/lib/exportPdf';
 import { toast } from '@/lib/toast';
 import { jamaahService } from '../../core/services/jamaahService';
 import { kloterService } from '../../core/services/kloterService';
+import { roomService } from '../../core/services/roomService';
 import { tourLeaderService, getKloterTourLeaders } from '../../core/services/tourLeaderService';
 
 export default function GroupDetail() {
@@ -47,6 +48,7 @@ export default function GroupDetail() {
     addRoom,
     updateRoom,
     deleteRoom,
+    setRooms,
     addOccupantToRoom,
     removeOccupantFromRoom,
     updateOccupantInRoom
@@ -74,6 +76,9 @@ export default function GroupDetail() {
   const [isAddRoomOpen, setIsAddRoomOpen] = useState<boolean>(false);
   const [newRoomCategory, setNewRoomCategory] = useState<RoomCategory>('DOUBLE');
   const [newRoomNumber, setNewRoomNumber] = useState<string>('');
+  const [newRoomGender, setNewRoomGender] = useState<'L' | 'P'>('L');
+  const [isCreatingRoom, setIsCreatingRoom] = useState(false);
+  const [deletingRoomId, setDeletingRoomId] = useState<string | null>(null);
 
   const [isAddOccupantOpen, setIsAddOccupantOpen] = useState<boolean>(false);
   const [targetRoomId, setTargetRoomId] = useState<string>('');
@@ -89,6 +94,11 @@ export default function GroupDetail() {
   const [isEditRoomNoOpen, setIsEditRoomNoOpen] = useState<boolean>(false);
   const [editingRoomNoId, setEditingRoomNoId] = useState<string>('');
   const [editingRoomNoVal, setEditingRoomNoVal] = useState<string>('');
+
+  const [isLoadingRooms, setIsLoadingRooms] = useState(false);
+  const [roomsError, setRoomsError] = useState<string | null>(null);
+
+  const targetKloterId = group?.backendId || group?.id;
 
   useEffect(() => {
     const loadJamaahs = async () => {
@@ -134,6 +144,63 @@ export default function GroupDetail() {
     loadKlotersAndTourLeaders();
   }, [setGroups, setTourLeaders]);
 
+  useEffect(() => {
+    let isCancelled = false;
+
+    const loadRooms = async () => {
+      if (!targetKloterId) {
+        return;
+      }
+
+      try {
+        setIsLoadingRooms(true);
+        setRoomsError(null);
+
+        const data = await roomService.getRooms(targetKloterId);
+        if (isCancelled) return;
+
+        const currentRooms = useStore.getState().rooms;
+        const fetchedIds = new Set(data.map((d) => d.id));
+
+        const otherRooms = currentRooms.filter((r) => {
+          if (fetchedIds.has(r.id)) return false;
+          const isThisKloter =
+            (group?.name && r.kloter === group.name) ||
+            (group?.kloter && r.kloter === group.kloter) ||
+            (group?.id && r.kloter === group.id) ||
+            (group?.backendId && r.kloter === group.backendId) ||
+            (targetKloterId && r.kloter === targetKloterId);
+          return !isThisKloter;
+        });
+
+        const normalizedRooms = data.map((r) => ({
+          ...r,
+          kloter: group?.name || r.kloter,
+        }));
+
+        setRooms([...otherRooms, ...normalizedRooms]);
+      } catch (error) {
+        if (isCancelled) return;
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Gagal mengambil data kamar.';
+        setRoomsError(message);
+        toast(message, 'error');
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingRooms(false);
+        }
+      }
+    };
+
+    loadRooms();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [targetKloterId, group?.name, group?.kloter, group?.id, group?.backendId, setRooms]);
+
 if (isLoadingGroup) {
   return (
     <div className="p-8 text-center space-y-4 bg-white rounded-2xl border border-gray-200">
@@ -168,8 +235,8 @@ if (isLoadingGroup) {
 
   // Related Data for this Kloter
   const groupPilgrims = pilgrims.filter(p => p.group === group.name || p.group === group.kloter || p.group === group.id);
-  const targetKloterId = group.backendId || group.id;
-  const groupTourLeaders = getKloterTourLeaders(targetKloterId, tourLeaders);
+  const currentKloterId = targetKloterId || group.id;
+  const groupTourLeaders = getKloterTourLeaders(currentKloterId, tourLeaders);
   const assignedTLNamesDisplay = groupTourLeaders.length > 0 ? groupTourLeaders.map(t => t.name).join(', ') : '-';
   const groupMutawifs = group.mutawifs || [];
   const groupEmergencies = emergencies.filter(e => e.group === group.name || e.group === group.kloter);
@@ -187,14 +254,21 @@ if (isLoadingGroup) {
     else setMadinahHotelName(val);
   };
 
+  const isMatchKloter = (r: RoomItem) =>
+    r.kloter === group.name ||
+    r.kloter === group.kloter ||
+    r.kloter === group.id ||
+    Boolean(group.backendId && r.kloter === group.backendId) ||
+    Boolean(targetKloterId && r.kloter === targetKloterId);
+
   // Filtered Rooms for this specific Kloter & Location
   const kloterRooms = rooms.filter(r => 
-    (r.kloter === group.name || r.kloter === group.kloter) && 
+    isMatchKloter(r) && 
     r.hotelLocation === selectedHotelLocation
   );
 
   // All rooms across location for stats
-  const allKloterRooms = rooms.filter(r => r.kloter === group.name || r.kloter === group.kloter);
+  const allKloterRooms = rooms.filter(isMatchKloter);
 
   // Unassigned pilgrims in this group for selected location
   const assignedNamesLocation = new Set(
@@ -228,25 +302,110 @@ if (isLoadingGroup) {
   };
 
   // Handlers for Room Allocation
-  const handleCreateRoom = () => {
-    const existingCount = kloterRooms.filter(r => r.category === newRoomCategory).length;
-    const roomLabel = `${newRoomCategory} ${existingCount + 1}`;
 
-    const newRoom: RoomItem = {
-      id: `RM-${Date.now()}`,
-      category: newRoomCategory,
-      roomLabel,
-      roomNumber: newRoomNumber,
-      kloter: group.name,
-      hotelLocation: selectedHotelLocation,
-      hotelName: currentHotelName,
-      occupants: []
-    };
+  const handleCreateRoom = async () => {
+    if (isCreatingRoom) return;
 
-    addRoom(newRoom);
-    setIsAddRoomOpen(false);
-    setNewRoomNumber('');
-    toast(`Kamar ${roomLabel} berhasil dibuat untuk ${group.name}.`, "success");
+    if (!targetKloterId) {
+      toast('ID kloter tidak ditemukan.', 'error');
+      return;
+    }
+
+    setIsCreatingRoom(true);
+
+    try {
+      const roomTypeMap: Record<RoomCategory, 'double' | 'triple' | 'quad' | 'quint'> = {
+        DOUBLE: 'double',
+        TRIPLE: 'triple',
+        QUAD: 'quad',
+        QUINT: 'quint',
+      };
+
+      const capacityMap: Record<RoomCategory, number> = {
+        DOUBLE: 2,
+        TRIPLE: 3,
+        QUAD: 4,
+        QUINT: 5,
+      };
+
+      const existingCount = kloterRooms.filter(
+        (room) => room.category === newRoomCategory
+      ).length;
+
+      const hotelId =
+        selectedHotelLocation === 'Makkah'
+          ? group.hotelMakkahId
+          : group.hotelMadinahId;
+
+      const createdRoom = await roomService.createRoom({
+        kloter_id: targetKloterId,
+        hotel_id: hotelId || null,
+        room_number: newRoomNumber.trim() || null,
+        room_type: roomTypeMap[newRoomCategory],
+        capacity: capacityMap[newRoomCategory],
+        gender: newRoomGender,
+        notes: `Lokasi hotel: ${selectedHotelLocation}`,
+      });
+
+      const roomForDisplay: RoomItem = {
+        ...createdRoom,
+        kloter: group.name,
+        hotelLocation: selectedHotelLocation,
+        hotelName: currentHotelName,
+      };
+
+      const currentRooms = useStore.getState().rooms;
+      const roomExists = currentRooms.some((r) => r.id === createdRoom.id);
+      if (!roomExists) {
+        addRoom(roomForDisplay);
+      }
+
+      setIsAddRoomOpen(false);
+      setNewRoomNumber('');
+      setNewRoomGender('L');
+
+      toast(
+        `Kamar ${newRoomCategory} ${existingCount + 1} berhasil disimpan.`,
+        'success'
+      );
+    } catch (error) {
+      console.error('Gagal membuat kamar:', error);
+      toast(
+        error instanceof Error
+          ? error.message
+          : 'Gagal menyimpan kamar ke server.',
+        'error'
+      );
+    } finally {
+      setIsCreatingRoom(false);
+    }
+  };
+
+  const handleDeleteRoom = async (room: RoomItem) => {
+    if (deletingRoomId) return;
+
+    const backendRoomId = room.backendId || room.id;
+    if (!backendRoomId) {
+      toast('ID backend kamar tidak ditemukan.', 'error');
+      return;
+    }
+
+    setDeletingRoomId(room.id);
+
+    try {
+      await roomService.deleteRoom(backendRoomId);
+      deleteRoom(room.id);
+      toast(`Kamar ${room.roomLabel} berhasil dihapus.`, 'success');
+    } catch (error) {
+      console.error('Gagal menghapus kamar:', error);
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Gagal menghapus kamar dari server.';
+      toast(message, 'error');
+    } finally {
+      setDeletingRoomId(null);
+    }
   };
 
   const handleAddOccupant = () => {
@@ -1097,7 +1256,7 @@ if (isLoadingGroup) {
                 <p className="text-xs text-gray-500 font-medium mt-0.5">{group.name} &bull; {periodTitle}</p>
               </div>
               <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase border shadow-2xs text-emerald-800 bg-emerald-50 border-emerald-300">
-                {kloterRooms.length} Kamar Terdaftar
+                {isLoadingRooms ? 'Memuat Kamar...' : `${kloterRooms.length} Kamar Terdaftar`}
               </span>
             </div>
 
@@ -1224,13 +1383,11 @@ if (isLoadingGroup) {
                             ) : (
                               <ConfirmDeleteButton
                                 variant="ghost"
-                                onConfirm={() => {
-                                  deleteRoom(room.id);
-                                  toast(`Kamar ${room.roomLabel} dihapus.`, "success");
-                                }}
-                                className="text-red-600 hover:text-red-700 p-1 h-auto rounded-md hover:bg-red-50 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                                disabled={Boolean(deletingRoomId)}
+                                onConfirm={() => handleDeleteRoom(room)}
+                                className="text-red-600 hover:text-red-700 p-1 h-auto rounded-md hover:bg-red-50 text-xs font-semibold flex items-center gap-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                               >
-                                Hapus Kamar
+                                {deletingRoomId === room.id ? 'Menghapus...' : 'Hapus Kamar'}
                               </ConfirmDeleteButton>
                             )}
                           </div>
@@ -1239,7 +1396,15 @@ if (isLoadingGroup) {
                     ));
                   })}
 
-                  {kloterRooms.length === 0 && (
+                  {isLoadingRooms ? (
+                    <tr>
+                      <td colSpan={7} className="text-center py-12 text-gray-500">
+                        <Clock className="w-8 h-8 mx-auto text-amber-500 animate-spin mb-2" />
+                        <p className="font-bold text-gray-900 text-sm">Memuat data kamar...</p>
+                        <p className="text-xs text-gray-500 mt-1">Mengambil daftar kamar dari server...</p>
+                      </td>
+                    </tr>
+                  ) : kloterRooms.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="text-center py-12 text-gray-500">
                         <BedDouble className="w-10 h-10 mx-auto text-gray-300 mb-2" />
@@ -1247,7 +1412,7 @@ if (isLoadingGroup) {
                         <p className="text-xs text-gray-500 mt-1">Klik tombol "+ Tambah Kamar" di atas untuk membuat Room Meet baru.</p>
                       </td>
                     </tr>
-                  )}
+                  ) : null}
                 </tbody>
               </table>
             </div>
@@ -1511,48 +1676,122 @@ if (isLoadingGroup) {
         </DialogContent>
       </Dialog>
 
+
       {/* ROOM MODALS: TAMBAH KAMAR */}
       <Dialog open={isAddRoomOpen} onOpenChange={setIsAddRoomOpen}>
         <DialogContent className="w-[95vw] sm:w-full max-w-md rounded-2xl p-6">
           <DialogHeader>
-            <DialogTitle className="text-base font-bold text-gray-900">Tambah Kamar Baru ({selectedHotelLocation})</DialogTitle>
+            <DialogTitle className="text-base font-bold text-gray-900">
+              Tambah Kamar Baru ({selectedHotelLocation})
+            </DialogTitle>
           </DialogHeader>
+
           <div className="space-y-4 py-3 text-xs">
+            {/* Tipe kamar */}
             <div>
-              <label className="font-semibold text-gray-700 mb-1.5 block">Tipe / Kategori Kamar</label>
+              <label className="font-semibold text-gray-700 mb-1.5 block">
+                Tipe / Kategori Kamar
+              </label>
+
               <div className="grid grid-cols-2 gap-2">
-                {(['DOUBLE', 'TRIPLE', 'QUAD', 'QUINT'] as RoomCategory[]).map(cat => (
-                  <button
-                    key={cat}
-                    type="button"
-                    onClick={() => setNewRoomCategory(cat)}
-                    className={`p-2.5 rounded-xl border text-xs font-bold transition-all text-center cursor-pointer ${
-                      newRoomCategory === cat 
-                        ? 'bg-[#740A03] text-white border-[#740A03] shadow-2xs' 
-                        : 'border-gray-200 text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    {cat} ({cat === 'DOUBLE' ? '2 Bed' : cat === 'TRIPLE' ? '3 Bed' : cat === 'QUAD' ? '4 Bed' : '5 Bed'})
-                  </button>
-                ))}
+                {(['DOUBLE', 'TRIPLE', 'QUAD', 'QUINT'] as RoomCategory[]).map(
+                  (cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setNewRoomCategory(cat)}
+                      className={`p-2.5 rounded-xl border text-xs font-bold transition-all text-center cursor-pointer ${
+                        newRoomCategory === cat
+                          ? 'bg-[#740A03] text-white border-[#740A03] shadow-2xs'
+                          : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      {cat} (
+                      {cat === 'DOUBLE'
+                        ? '2 Bed'
+                        : cat === 'TRIPLE'
+                          ? '3 Bed'
+                          : cat === 'QUAD'
+                            ? '4 Bed'
+                            : '5 Bed'}
+                      )
+                    </button>
+                  )
+                )}
               </div>
             </div>
+
+            {/* Nomor kamar */}
             <div>
-              <label className="font-semibold text-gray-700 mb-1.5 block">Nomor Kamar Hotel (Opsional)</label>
-              <Input 
+              <label className="font-semibold text-gray-700 mb-1.5 block">
+                Nomor Kamar Hotel (Opsional)
+              </label>
+
+              <Input
                 value={newRoomNumber}
                 onChange={(e) => setNewRoomNumber(e.target.value)}
                 placeholder="Contoh: 402, 512, B-10"
                 className="h-9.5 text-xs sm:text-sm rounded-xl font-mono"
               />
             </div>
+
+            {/* Gender penghuni */}
+            <div>
+              <label className="font-semibold text-gray-700 mb-1.5 block">
+                Gender Penghuni Kamar
+              </label>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setNewRoomGender('L')}
+                  className={`p-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                    newRoomGender === 'L'
+                      ? 'bg-[#740A03] text-white border-[#740A03]'
+                      : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  Laki-laki
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setNewRoomGender('P')}
+                  className={`p-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                    newRoomGender === 'P'
+                      ? 'bg-[#740A03] text-white border-[#740A03]'
+                      : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  Perempuan
+                </button>
+              </div>
+            </div>
           </div>
+
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setIsAddRoomOpen(false)} className="rounded-xl h-9 text-xs font-semibold cursor-pointer">Batal</Button>
-            <Button size="sm" onClick={handleCreateRoom} className="bg-[#740A03] hover:bg-[#580802] text-white rounded-xl h-9 text-xs font-semibold px-4 cursor-pointer">+ Tambah Kamar</Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isCreatingRoom}
+              onClick={() => setIsAddRoomOpen(false)}
+              className="rounded-xl h-9 text-xs font-semibold cursor-pointer"
+            >
+              Batal
+            </Button>
+
+            <Button
+              size="sm"
+              onClick={handleCreateRoom}
+              disabled={isCreatingRoom}
+              className="bg-[#740A03] hover:bg-[#580802] text-white rounded-xl h-9 text-xs font-semibold px-4 cursor-pointer"
+            >
+              {isCreatingRoom ? 'Menyimpan...' : '+ Tambah Kamar'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
 
       {/* ROOM MODALS: TAMBAH PENGHUNI */}
       <Dialog open={isAddOccupantOpen} onOpenChange={setIsAddOccupantOpen}>

@@ -127,11 +127,12 @@ export default function RoomAllocation() {
     }
   };
 
-  // Modal States
   const [isAddRoomOpen, setIsAddRoomOpen] = useState<boolean>(false);
   const [newRoomCategory, setNewRoomCategory] = useState<RoomCategory>('DOUBLE');
   const [newRoomNumber, setNewRoomNumber] = useState<string>('');
   const [newRoomGender, setNewRoomGender] = useState<'L' | 'P'>('L');
+  const [isCreatingRoom, setIsCreatingRoom] = useState<boolean>(false);
+  const [deletingRoomId, setDeletingRoomId] = useState<string | null>(null);
 
   const [isAddOccupantOpen, setIsAddOccupantOpen] = useState<boolean>(false);
   const [targetRoomId, setTargetRoomId] = useState<string>('');
@@ -158,6 +159,8 @@ export default function RoomAllocation() {
 
   // STEP 3B - Load Room Meet dari backend
   useEffect(() => {
+    let isCancelled = false;
+
     const loadRooms = async () => {
       if (!selectedGroupObj?.backendId) {
         setRoomError('ID backend Kloter tidak ditemukan.');
@@ -169,9 +172,30 @@ export default function RoomAllocation() {
         setRoomError(null);
 
         const data = await roomService.getRooms(selectedGroupObj.backendId);
+        if (isCancelled) return;
 
-        setRooms(data);
+        const currentRooms = useStore.getState().rooms;
+        const fetchedIds = new Set(data.map((d) => d.id));
+
+        const otherRooms = currentRooms.filter((r) => {
+          if (fetchedIds.has(r.id)) return false;
+          const isThisKloter =
+            (selectedGroupObj?.name && r.kloter === selectedGroupObj.name) ||
+            (selectedGroupObj?.kloter && r.kloter === selectedGroupObj.kloter) ||
+            (selectedGroupObj?.id && r.kloter === selectedGroupObj.id) ||
+            (selectedGroupObj?.backendId && r.kloter === selectedGroupObj.backendId) ||
+            r.kloter === selectedKloter;
+          return !isThisKloter;
+        });
+
+        const normalizedRooms = data.map((r) => ({
+          ...r,
+          kloter: selectedGroupObj?.name || r.kloter,
+        }));
+
+        setRooms([...otherRooms, ...normalizedRooms]);
       } catch (error) {
+        if (isCancelled) return;
         const message =
           error instanceof Error
             ? error.message
@@ -179,18 +203,26 @@ export default function RoomAllocation() {
 
         setRoomError(message);
       } finally {
-        setIsLoadingRooms(false);
+        if (!isCancelled) {
+          setIsLoadingRooms(false);
+        }
       }
     };
 
     loadRooms();
-  }, [selectedGroupObj?.backendId, setRooms]);
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedGroupObj?.backendId, selectedGroupObj?.name, selectedGroupObj?.kloter, selectedGroupObj?.id, selectedKloter, setRooms]);
 
   const matchedKloterNames = useMemo(() => {
     return new Set([
       selectedKloter,
       selectedGroupObj?.name,
-      selectedGroupObj?.kloter
+      selectedGroupObj?.kloter,
+      selectedGroupObj?.id,
+      selectedGroupObj?.backendId,
     ].filter(Boolean) as string[]);
   }, [selectedKloter, selectedGroupObj]);
 
@@ -282,6 +314,8 @@ export default function RoomAllocation() {
 
   // Handle Add Room
   const handleCreateRoom = async () => {
+    if (isCreatingRoom) return;
+
     if (!selectedGroupObj?.backendId) {
       toast("ID backend kloter tidak ditemukan.", "error");
       return;
@@ -292,13 +326,7 @@ export default function RoomAllocation() {
         ? selectedGroupObj.hotelMakkahId
         : selectedGroupObj.hotelMadinahId;
 
-    if (!hotelId) {
-      toast(
-        `Hotel ${selectedHotelLocation} untuk kloter ${selectedKloter} belum tersedia.`,
-        "error"
-      );
-      return;
-    }
+    setIsCreatingRoom(true);
 
     try {
       const existingCount = kloterLocationRooms.filter(
@@ -309,7 +337,7 @@ export default function RoomAllocation() {
 
       const createdRoom = await roomService.createRoom({
         kloter_id: selectedGroupObj.backendId,
-        hotel_id: hotelId,
+        hotel_id: hotelId || null,
         room_number: newRoomNumber.trim() || null,
         room_type: newRoomCategory.toLowerCase() as
           | 'double'
@@ -325,13 +353,21 @@ export default function RoomAllocation() {
             ? 4
             : 5,
         gender: newRoomGender,
-        notes: null,
+        notes: `Lokasi hotel: ${selectedHotelLocation}`,
       });
 
-      setRooms([
-        ...rooms,
-        createdRoom,
-      ]);
+      const roomForDisplay: RoomItem = {
+        ...createdRoom,
+        kloter: selectedGroupObj.name,
+        hotelLocation: selectedHotelLocation,
+        hotelName: (selectedHotelLocation === 'Makkah' ? makkahHotelName : madinahHotelName) || createdRoom.hotelName,
+      };
+
+      const currentRooms = useStore.getState().rooms;
+      const roomExists = currentRooms.some((r) => r.id === createdRoom.id);
+      if (!roomExists) {
+        addRoom(roomForDisplay);
+      }
 
       setIsAddRoomOpen(false);
       setNewRoomNumber('');
@@ -339,12 +375,42 @@ export default function RoomAllocation() {
 
       toast(`Kamar ${roomLabel} berhasil dibuat.`, "success");
     } catch (error) {
+      console.error('Gagal membuat kamar:', error);
       const message =
         error instanceof Error
           ? error.message
           : "Gagal membuat kamar.";
 
       toast(message, "error");
+    } finally {
+      setIsCreatingRoom(false);
+    }
+  };
+
+  const handleDeleteRoom = async (room: RoomItem) => {
+    if (deletingRoomId) return;
+
+    const backendRoomId = room.backendId || room.id;
+    if (!backendRoomId) {
+      toast('ID backend kamar tidak ditemukan.', 'error');
+      return;
+    }
+
+    setDeletingRoomId(room.id);
+
+    try {
+      await roomService.deleteRoom(backendRoomId);
+      deleteRoom(room.id);
+      toast(`Kamar ${room.roomLabel} berhasil dihapus.`, 'success');
+    } catch (error) {
+      console.error('Gagal menghapus kamar:', error);
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Gagal menghapus kamar dari server.';
+      toast(message, 'error');
+    } finally {
+      setDeletingRoomId(null);
     }
   };
 
@@ -1166,13 +1232,11 @@ export default function RoomAllocation() {
                         ) : (
                           <ConfirmDeleteButton
                             variant="ghost"
-                            onConfirm={() => {
-                              deleteRoom(room.id);
-                              toast(`Kamar ${room.roomLabel} dihapus.`, "success");
-                            }}
-                            className="text-red-600 hover:text-red-700 p-1 h-auto rounded-md hover:bg-red-50 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                            disabled={Boolean(deletingRoomId)}
+                            onConfirm={() => handleDeleteRoom(room)}
+                            className="text-red-600 hover:text-red-700 p-1 h-auto rounded-md hover:bg-red-50 text-xs font-semibold flex items-center gap-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            Hapus Kamar
+                            {deletingRoomId === room.id ? 'Menghapus...' : 'Hapus Kamar'}
                           </ConfirmDeleteButton>
                         )}
                       </div>
@@ -1277,11 +1341,22 @@ export default function RoomAllocation() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setIsAddRoomOpen(false)} className="rounded-xl h-9.5 text-xs font-semibold cursor-pointer">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isCreatingRoom}
+              onClick={() => setIsAddRoomOpen(false)}
+              className="rounded-xl h-9.5 text-xs font-semibold cursor-pointer"
+            >
               Batal
             </Button>
-            <Button size="sm" onClick={handleCreateRoom} className="bg-[#740A03] hover:bg-[#580802] text-white rounded-xl h-9.5 text-xs font-semibold px-4 cursor-pointer">
-              + Tambah Kamar
+            <Button
+              size="sm"
+              onClick={handleCreateRoom}
+              disabled={isCreatingRoom}
+              className="bg-[#740A03] hover:bg-[#580802] text-white rounded-xl h-9.5 text-xs font-semibold px-4 cursor-pointer"
+            >
+              {isCreatingRoom ? 'Menyimpan...' : '+ Tambah Kamar'}
             </Button>
           </DialogFooter>
         </DialogContent>

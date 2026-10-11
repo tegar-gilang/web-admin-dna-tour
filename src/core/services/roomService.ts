@@ -131,10 +131,18 @@ export const roomService = {
       `/kloters/${kloterId}/rooms`
     );
 
-    return response.data.rooms.map((room) =>
+    const roomsList = Array.isArray(response?.data?.rooms)
+      ? response.data.rooms
+      : Array.isArray(response?.data)
+      ? (response.data as unknown as BackendRoom[])
+      : [];
+
+    const kloterName = response?.kloter?.name;
+
+    return roomsList.map((room) =>
       mapBackendRoomToFrontend(
         room,
-        response.kloter.name
+        kloterName
       )
     );
   },
@@ -284,7 +292,8 @@ function mapBackendRoomToFrontend(
     kloter: kloterName ?? room.kloter_id,
 
     hotelLocation: mapHotelLocation(
-      room.hotel?.city
+      room.hotel?.city,
+      room.notes
     ),
 
     hotelName: room.hotel?.name ?? '',
@@ -352,18 +361,34 @@ function mapRoomTypeToCategory(
 }
 
 /**
- * Backend hotel.city -> Frontend hotelLocation
+ * Backend hotel.city / notes -> Frontend hotelLocation
  *
  * Hotel hanya menjadi informasi/keterangan
- * untuk lokasi Makkah/Madinah.
+ * untuk lokasi Makkah/Madinah. Jika hotel null,
+ * lokasi dapat diambil dari notes.
  */
 function mapHotelLocation(
-  city?: string | null
+  city?: string | null,
+  notes?: string | null
 ): 'Makkah' | 'Madinah' {
   if (
     city?.trim().toLowerCase() === 'madinah'
   ) {
     return 'Madinah';
+  }
+
+  if (city?.trim().toLowerCase() === 'makkah') {
+    return 'Makkah';
+  }
+
+  if (notes) {
+    const lower = notes.toLowerCase();
+    if (lower.includes('madinah')) {
+      return 'Madinah';
+    }
+    if (lower.includes('makkah')) {
+      return 'Makkah';
+    }
   }
 
   return 'Makkah';
