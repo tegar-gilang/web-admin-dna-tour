@@ -2,7 +2,7 @@ export function toast(message: string, type: 'success' | 'info' | 'error' = 'inf
   const container = document.getElementById('toast-container') || (() => {
     const el = document.createElement('div');
     el.id = 'toast-container';
-    el.className = 'fixed bottom-4 right-4 z-50 flex flex-col gap-2';
+    el.className = 'fixed bottom-4 right-4 z-[9999] flex flex-col gap-2';
     document.body.appendChild(el);
     return el;
   })();
