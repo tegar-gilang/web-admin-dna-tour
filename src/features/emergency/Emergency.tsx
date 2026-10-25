@@ -238,9 +238,9 @@ export default function Emergency() {
   }>({
     jamaah_id: '',
     type: 'health',
-    location_name: 'Masjidil Haram - Bab Malik Abdulaziz',
-    latitude: '21.4225',
-    longitude: '39.8262',
+    location_name: '',
+    latitude: '',
+    longitude: '',
     description: '',
   });
 
@@ -392,9 +392,9 @@ export default function Emergency() {
     setCreateFormData({
       jamaah_id: '',
       type: 'health',
-      location_name: 'Masjidil Haram - Bab Malik Abdulaziz',
-      latitude: '21.4225',
-      longitude: '39.8262',
+      location_name: '',
+    latitude: '',
+    longitude: '',
       description: '',
     });
     setIsCreateModalOpen(true);
@@ -1118,7 +1118,7 @@ export default function Emergency() {
                           <div className="flex items-center gap-1.5 text-xs font-bold text-gray-900">
                             <MapPin className="w-3.5 h-3.5 text-blue-600 shrink-0" />
                             <span>
-                              {alert.location_name || (hasTableCoords ? `Koordinat (${Number(alert.latitude).toFixed(4)}, ${Number(alert.longitude).toFixed(4)})` : 'Lokasi tidak disebutkan')}
+                              {alert.location_name || (hasTableCoords ? `Koordinat (${Number(alert.latitude).toFixed(4)}, ${Number(alert.longitude).toFixed(4)})` : 'Nama lokasi belum tersedia')}
                             </span>
                           </div>
                           <div className="flex items-center gap-2 mt-1">
@@ -1462,7 +1462,7 @@ export default function Emergency() {
                         <span>Lokasi Landmark</span>
                       </div>
                       <span className="font-bold text-gray-900 text-xs sm:text-sm text-right max-w-xs sm:max-w-md">
-                        {currentItem.location_name || 'Tidak ada deskripsi lokasi'}
+                        {currentItem.location_name || 'Nama lokasi belum tersedia'}
                       </span>
                     </div>
 
