@@ -17,7 +17,7 @@ import {
   Plus, Search, Filter, Download, Trash2, Edit2, CheckCircle2, Circle, Clock,
   MapPin, Calendar, Sparkles, ChevronDown, ChevronUp, UserCheck, Shirt, Lightbulb,
   Building2, Plane, Coffee, BookOpen, Compass, List, ArrowRight, RefreshCw, Check,
-  Activity, User, Flag, Layers, CheckSquare, Square, X, Printer
+  Activity, User, Flag, Layers, CheckSquare, Square, X, Printer, Send, Radio, AlertCircle
 } from 'lucide-react';
 
 export default function Journey() {
@@ -49,6 +49,12 @@ export default function Journey() {
 
   // Modal form
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [broadcastingId, setBroadcastingId] = useState<string | null>(null);
+  const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+  const [broadcastConfirmSchedule, setBroadcastConfirmSchedule] = useState<Schedule | null>(null);
+  const [statusModalSchedule, setStatusModalSchedule] = useState<Schedule | null>(null);
+  const [selectedStatusMode, setSelectedStatusMode] = useState<'auto' | 'manual'>('auto');
+  const [selectedStatusOverride, setSelectedStatusOverride] = useState<'upcoming' | 'in_progress' | 'completed'>('upcoming');
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
   const [formData, setFormData] = useState<Partial<Schedule>>({
     category: 'ibadah',
@@ -104,39 +110,26 @@ export default function Journey() {
     });
   }, [schedules]);
 
-  // Helper / Map to calculate activity status automatically based on current time & overrides
-  const scheduleStatusMap = useMemo(() => {
-    const map = new Map<string, 'completed' | 'in_progress' | 'upcoming'>();
-    if (sortedSchedules.length === 0) return map;
-
-    const currentTime = now.getTime();
-
-    sortedSchedules.forEach((schedule, index) => {
-      if (schedule.statusOverride) {
-        map.set(schedule.id, schedule.statusOverride);
-      } else {
-        const startTime = new Date(`${schedule.date}T${schedule.time}`).getTime();
-        const nextSchedule = sortedSchedules[index + 1];
-        const nextStart = nextSchedule
-          ? new Date(`${nextSchedule.date}T${nextSchedule.time}`).getTime()
-          : startTime + 2 * 60 * 60 * 1000; // Default 2 hours duration for the last item
-
-        if (currentTime >= nextStart) {
-          map.set(schedule.id, 'completed');
-        } else if (currentTime >= startTime && currentTime < nextStart) {
-          map.set(schedule.id, 'in_progress');
-        } else {
-          map.set(schedule.id, 'upcoming');
-        }
-      }
-    });
-
-    return map;
-  }, [sortedSchedules, now]);
-
-  // Helper function to get schedule status from calculated status map
+  // Source of truth: backend schedule.status (resolved by ScheduleTimelineService)
   const getScheduleStatus = (schedule: Schedule): 'completed' | 'in_progress' | 'upcoming' => {
-    return scheduleStatusMap.get(schedule.id) || schedule.statusOverride || 'upcoming';
+    return schedule.status || schedule.statusOverride || 'upcoming';
+  };
+
+  const getReminderStatusBadge = (reminderStatus?: 'draft' | 'published') => {
+    if (reminderStatus === 'published') {
+      return {
+        label: 'Telah Disiarkan',
+        variant: 'default' as const,
+        className: 'bg-emerald-50 text-emerald-700 border-emerald-200 text-[11px] font-semibold',
+        icon: <Send className="w-3 h-3 mr-1 text-emerald-600" />
+      };
+    }
+    return {
+      label: 'Belum Disiarkan',
+      variant: 'outline' as const,
+      className: 'bg-slate-50 text-slate-600 border-slate-200 text-[11px] font-medium',
+      icon: <Radio className="w-3 h-3 mr-1 text-slate-400" />
+    };
   };
 
   // Animation props based on status
@@ -312,20 +305,58 @@ export default function Journey() {
     }
   };
 
-  const toggleStatusOverride = async (schedule: Schedule) => {
-    const currentStatus = getScheduleStatus(schedule);
-    let nextStatus: 'completed' | 'in_progress' | 'upcoming';
-    if (currentStatus === 'upcoming') nextStatus = 'in_progress';
-    else if (currentStatus === 'in_progress') nextStatus = 'completed';
-    else nextStatus = 'upcoming';
+  const openStatusModal = (schedule: Schedule) => {
+    setStatusModalSchedule(schedule);
+    setSelectedStatusMode(schedule.statusMode || (schedule.statusOverride ? 'manual' : 'auto'));
+    setSelectedStatusOverride(schedule.statusOverride || schedule.status || 'upcoming');
+  };
 
+  const handleUpdateStatus = async () => {
+    if (!statusModalSchedule) return;
     try {
-      const updated = await journeyService.updateScheduleStatus(schedule.id, nextStatus);
-      updateSchedule(schedule.id, updated);
-      toast(`Status kegiatan diubah menjadi "${nextStatus === 'completed' ? 'Selesai' : nextStatus === 'in_progress' ? 'Sedang Berlangsung' : 'Belum Mulai'}"`, "success");
+      setUpdatingStatusId(statusModalSchedule.id);
+      const isAuto = selectedStatusMode === 'auto';
+      const updated = await journeyService.updateScheduleStatus(
+        statusModalSchedule.id,
+        isAuto ? null : selectedStatusOverride,
+        selectedStatusMode
+      );
+      updateSchedule(statusModalSchedule.id, updated);
+      toast(
+        isAuto
+          ? 'Mode status dikembalikan ke Otomatis (timeline backend).'
+          : `Status pelaksanaan diatur manual ke "${selectedStatusOverride === 'completed' ? 'Selesai' : selectedStatusOverride === 'in_progress' ? 'Sedang Berlangsung' : 'Akan Datang'}".`,
+        'success'
+      );
+      setStatusModalSchedule(null);
     } catch (err: any) {
       console.error('Failed to update schedule status:', err);
-      toast(err.message || "Gagal memperbarui status kegiatan", "error");
+      toast(err.message || 'Gagal memperbarui status pelaksanaan', 'error');
+    } finally {
+      setUpdatingStatusId(null);
+    }
+  };
+
+  const handleOpenBroadcastConfirm = (schedule: Schedule) => {
+    setBroadcastConfirmSchedule(schedule);
+  };
+
+  const confirmBroadcast = async () => {
+    if (!broadcastConfirmSchedule) return;
+    try {
+      setBroadcastingId(broadcastConfirmSchedule.id);
+      const res = await journeyService.broadcastSchedule(broadcastConfirmSchedule.id);
+      updateSchedule(broadcastConfirmSchedule.id, res.schedule);
+      toast(
+        `Pengingat jadwal berhasil disiarkan! (${res.recipientsCount} penerima tercatat, ${res.notificationsQueued} notifikasi diproses backend)`,
+        'success'
+      );
+      setBroadcastConfirmSchedule(null);
+    } catch (err: any) {
+      console.error('Failed to broadcast schedule:', err);
+      toast(err.message || 'Gagal menyiarkan jadwal kegiatan', 'error');
+    } finally {
+      setBroadcastingId(null);
     }
   };
 
@@ -334,6 +365,7 @@ export default function Journey() {
     setFormData({
       date: new Date().toISOString().split('T')[0],
       time: '08:00',
+      endTime: '',
       category: 'ibadah',
       dayNumber: daysWithInfo.length > 0 ? daysWithInfo[daysWithInfo.length - 1].dayNumber : 1,
       title: '',
@@ -367,6 +399,7 @@ export default function Journey() {
           title: formData.title || 'Kegiatan Tanpa Judul',
           date: formData.date || new Date().toISOString().split('T')[0],
           time: formData.time || '08:00',
+          endTime: formData.endTime || undefined,
           location: formData.location || '',
           keterangan: formData.keterangan || '',
           category: formData.category || 'ibadah',
@@ -398,17 +431,25 @@ export default function Journey() {
   };
 
   const handleExportExcel = () => {
-    const exportData = filteredSchedules.map(s => ({
-      'ID Jadwal': s.id,
-      'Hari ke-': s.dayNumber ? `Hari ${s.dayNumber}` : '-',
-      'Tanggal': s.date,
-      'Waktu': s.time,
-      'Kategori': s.category || '-',
-      'Judul Kegiatan': s.title,
-      'Lokasi': s.location,
-      'Penanggung Jawab': s.pic || '-',
-      'Keterangan': s.keterangan || '-'
-    }));
+    const exportData = filteredSchedules.map(s => {
+      const status = getScheduleStatus(s);
+      return {
+        'ID Jadwal': s.id,
+        'Hari ke-': s.dayNumber ? `Hari ${s.dayNumber}` : '-',
+        'Tanggal': s.date,
+        'Waktu Mulai': s.time,
+        'Waktu Selesai (Input)': s.endTime || '-',
+        'Waktu Selesai (Efektif)': s.effectiveEndTime || '-',
+        'Kategori': s.category || '-',
+        'Judul Kegiatan': s.title,
+        'Lokasi': s.location,
+        'Penanggung Jawab': s.pic || '-',
+        'Status Pelaksanaan': status === 'completed' ? 'Selesai' : status === 'in_progress' ? 'Sedang Berlangsung' : 'Akan Datang',
+        'Mode Status': s.statusMode === 'manual' ? 'Manual' : 'Otomatis',
+        'Status Pengingat (Reminder)': s.reminderStatus === 'published' ? 'Telah Disiarkan' : 'Belum Disiarkan',
+        'Keterangan': s.keterangan || '-'
+      };
+    });
     exportToExcel(exportData, 'Timeline_Jadwal_Perjalanan', 'Laporan Jadwal Perjalanan - DNA Tour');
   };
 
@@ -713,7 +754,7 @@ export default function Journey() {
 
                       {/* Timeline Icon Node */}
                       <button 
-                        onClick={() => toggleStatusOverride(schedule)}
+                        onClick={() => openStatusModal(schedule)}
                         className="mt-3 flex-shrink-0 cursor-pointer focus:outline-none"
                       >
                         {status === 'completed' ? (
@@ -732,69 +773,136 @@ export default function Journey() {
                       </button>
 
                       {/* Timeline Content Card */}
-                      <div className={`flex-1 min-w-0 border border-gray-200 bg-white hover:bg-gray-50 rounded-lg p-3 sm:p-4 transition-all duration-200 shadow-xs`}>
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 min-w-0">
+                      <div className={`flex-1 min-w-0 border border-gray-200 bg-white hover:bg-gray-50/70 rounded-xl p-3.5 sm:p-4 transition-all duration-200 shadow-xs`}>
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 min-w-0">
                           {/* Detail Left Side */}
                           <div className="flex flex-col sm:flex-row sm:items-center gap-4 flex-1 min-w-0">
                             
-                            <div className="flex flex-col w-full sm:w-44 shrink-0">
+                            {/* Hari & Waktu with Inferred/Effective End Time */}
+                            <div className="flex flex-col w-full sm:w-48 shrink-0">
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-rose-50 text-[#740A03] border border-rose-200">
                                   Hari {schedule.dayNumber || 1}
                                 </span>
                                 <span className="font-mono text-sm font-bold text-gray-900">
-                                  {schedule.time} WIB
+                                  {schedule.time}
+                                  {schedule.effectiveEndTime && (
+                                    <span className="text-gray-500 font-medium text-xs"> - {schedule.effectiveEndTime}</span>
+                                  )}
+                                  <span className="text-[11px] text-gray-400 font-normal ml-1">WIB</span>
                                 </span>
                               </div>
-                              <span className="text-xs text-gray-500 font-medium mt-1">{formatDateFormatted(schedule.date)}</span>
+                              <div className="flex items-center gap-1 mt-1 text-xs text-gray-500 font-medium">
+                                <Calendar className="w-3 h-3 text-gray-400 shrink-0" />
+                                <span>{formatDateFormatted(schedule.date)}</span>
+                              </div>
+                              {schedule.inferredEndTime && !schedule.endTime && (
+                                <span className="text-[10px] text-blue-600 font-normal italic">
+                                  *Selesai efektif: {schedule.inferredEndTime} WIB
+                                </span>
+                              )}
                             </div>
 
+                            {/* Judul & Keterangan */}
                             <div className="flex flex-col flex-1 min-w-0">
-                              <span className="font-bold text-gray-900 text-sm truncate">{schedule.title}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-gray-900 text-sm truncate">{schedule.title}</span>
+                                {catInfo && (
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border ${catInfo.bg}`}>
+                                    {catInfo.label}
+                                  </span>
+                                )}
+                              </div>
                               {schedule.keterangan && (
                                 <span className="text-xs text-gray-500 line-clamp-1 mt-0.5">{schedule.keterangan}</span>
                               )}
                             </div>
 
-                            <div className="flex flex-col w-full sm:w-40 shrink-0">
-                              <div className="flex items-center text-xs font-medium text-gray-600">
+                            {/* Lokasi & PIC */}
+                            <div className="flex flex-col w-full sm:w-44 shrink-0">
+                              <div className="flex items-center text-xs font-medium text-gray-600 truncate">
                                 <MapPin className="w-3.5 h-3.5 text-red-600 mr-1.5 shrink-0" />
-                                <span className="truncate">{schedule.location}</span>
+                                <span className="truncate">{schedule.location || '-'}</span>
                               </div>
+                              {schedule.pic && (
+                                <div className="flex items-center text-[11px] text-gray-500 font-normal truncate mt-0.5">
+                                  <User className="w-3 h-3 text-gray-400 mr-1.5 shrink-0" />
+                                  <span className="truncate">PIC: {schedule.pic}</span>
+                                </div>
+                              )}
                             </div>
                             
-                            <div className="w-full sm:w-32 shrink-0">
-                              <button
-                                type="button"
-                                onClick={() => toggleStatusOverride(schedule)}
-                                className="inline-flex items-center gap-1.5 text-xs font-medium cursor-pointer transition-colors focus:outline-none py-1 px-2 rounded-lg hover:bg-gray-100/60"
-                              >
-                                {status === 'completed' ? (
-                                  <>
-                                    <CheckSquare className="w-4 h-4 text-green-600 shrink-0" />
-                                    <span className="font-bold text-green-700">Selesai</span>
-                                  </>
-                                ) : status === 'in_progress' ? (
-                                  <>
-                                    <Activity className="w-4 h-4 text-blue-600 animate-pulse shrink-0" />
-                                    <span className="font-bold text-blue-700">Berlangsung</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Square className="w-4 h-4 text-gray-400 shrink-0" />
-                                    <span className="font-medium text-gray-500">Belum Selesai</span>
-                                  </>
-                                )}
-                              </button>
+                            {/* STATUS PELAKSANAAN & REMINDER (DIPISAH SESUAI KONTRAK) */}
+                            <div className="flex flex-col gap-1.5 w-full sm:w-40 shrink-0">
+                              {/* Pelaksanaan */}
+                              <div className="flex items-center justify-between">
+                                <button
+                                  type="button"
+                                  onClick={() => openStatusModal(schedule)}
+                                  className="inline-flex items-center gap-1.5 text-xs font-medium cursor-pointer transition-colors focus:outline-none py-1 px-2 rounded-lg hover:bg-gray-100/80 border border-gray-200/60"
+                                  title="Klik untuk mengubah status pelaksanaan"
+                                >
+                                  {status === 'completed' ? (
+                                    <>
+                                      <CheckSquare className="w-3.5 h-3.5 text-green-600 shrink-0" />
+                                      <span className="font-bold text-green-700">Selesai</span>
+                                    </>
+                                  ) : status === 'in_progress' ? (
+                                    <>
+                                      <Activity className="w-3.5 h-3.5 text-blue-600 animate-pulse shrink-0" />
+                                      <span className="font-bold text-blue-700">Berlangsung</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Square className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                                      <span className="font-medium text-gray-600">Akan Datang</span>
+                                    </>
+                                  )}
+                                  <span className="text-[10px] text-gray-400">({schedule.statusMode === 'manual' ? 'Manual' : 'Otomatis'})</span>
+                                </button>
+                              </div>
+
+                              {/* Reminder Status Badge */}
+                              <div className="flex items-center">
+                                {(() => {
+                                  const rBadge = getReminderStatusBadge(schedule.reminderStatus);
+                                  return (
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border ${rBadge.className}`}>
+                                      {rBadge.icon}
+                                      {rBadge.label}
+                                    </span>
+                                  );
+                                })()}
+                              </div>
                             </div>
                           </div>
 
-                          {/* Right Column: Edit Action */}
-                          <div className="flex items-center justify-end shrink-0">
+                          {/* Right Column: Broadcast & Edit Action */}
+                          <div className="flex items-center justify-end gap-2 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-gray-100">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={broadcastingId === schedule.id}
+                              className={`h-8 px-2.5 text-xs font-semibold rounded-lg cursor-pointer transition-all ${
+                                schedule.reminderStatus === 'published'
+                                  ? 'text-emerald-700 border-emerald-200 hover:bg-emerald-50'
+                                  : 'text-sky-700 border-sky-200 hover:bg-sky-50'
+                              }`}
+                              onClick={() => handleOpenBroadcastConfirm(schedule)}
+                              title="Kirim siaran pengingat kegiatan ke Tour Leader, Jamaah, dan Keluarga aktif"
+                            >
+                              {broadcastingId === schedule.id ? (
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin mr-1.5 text-sky-600" />
+                              ) : (
+                                <Send className="w-3.5 h-3.5 mr-1.5" />
+                              )}
+                              {schedule.reminderStatus === 'published' ? 'Siarkan Ulang' : 'Siarkan'}
+                            </Button>
+
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-8 px-3 text-xs font-medium text-gray-700 hover:text-red-800 hover:bg-red-50 border border-gray-200 hover:border-red-200 transition-all rounded-lg cursor-pointer"
+                              className="h-8 px-2.5 text-xs font-medium text-gray-700 hover:text-red-800 hover:bg-red-50 border border-gray-200 hover:border-red-200 transition-all rounded-lg cursor-pointer"
                               onClick={() => openEditModal(schedule)}
                             >
                               <Edit2 className="w-3.5 h-3.5 mr-1.5 text-red-600" /> Edit
@@ -855,10 +963,11 @@ export default function Journey() {
                         className="border-gray-300 data-[state=checked]:bg-red-600 data-[state=checked]:border-red-600"
                       />
                     </TableHead>
-                    <TableHead className="w-[200px] font-semibold text-gray-900">Hari & Waktu</TableHead>
+                    <TableHead className="w-[180px] font-semibold text-gray-900">Hari & Waktu</TableHead>
                     <TableHead className="font-semibold text-gray-900">Detail Kegiatan</TableHead>
-                    <TableHead className="w-[180px] font-semibold text-gray-900">Lokasi</TableHead>
-                    <TableHead className="w-[170px] font-semibold text-gray-900">Status</TableHead>
+                    <TableHead className="w-[150px] font-semibold text-gray-900">Lokasi & PIC</TableHead>
+                    <TableHead className="w-[140px] font-semibold text-gray-900">Pelaksanaan</TableHead>
+                    <TableHead className="w-[130px] font-semibold text-gray-900">Pengingat</TableHead>
                     <TableHead className="text-right pr-6 font-semibold text-gray-900">Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -906,7 +1015,7 @@ export default function Journey() {
                         <TableCell>
                           <button
                             type="button"
-                            onClick={() => toggleStatusOverride(schedule)}
+                            onClick={() => openStatusModal(schedule)}
                             className="cursor-pointer focus:outline-none inline-flex items-center gap-1.5 text-xs transition-colors py-0.5 px-1.5 rounded hover:bg-gray-100/60"
                             title="Klik untuk mengubah status"
                           >
@@ -938,7 +1047,7 @@ export default function Journey() {
                   })}
                   {filteredSchedules.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={6} className="h-32 text-center text-gray-500">
+                      <TableCell colSpan={7} className="h-32 text-center text-gray-500">
                         Tidak ada data kegiatan ditemukan.
                       </TableCell>
                     </TableRow>
@@ -1099,13 +1208,30 @@ export default function Journey() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
                   <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                    WAKTU (JAM) *
+                    WAKTU MULAI *
                   </label>
                   <div className="sm:col-span-8">
                     <Input 
                       type="time" 
                       value={formData.time || ''} 
                       onChange={(e) => setFormData({...formData, time: e.target.value})} 
+                      className="h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base font-bold text-gray-900 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859] cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
+                  <div className="sm:col-span-4">
+                    <label className="text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider block">
+                      WAKTU SELESAI
+                    </label>
+                    <span className="text-[11px] text-gray-400 font-normal">Opsional (efektif diinferensikan jika kosong)</span>
+                  </div>
+                  <div className="sm:col-span-8">
+                    <Input 
+                      type="time" 
+                      value={formData.endTime || ''} 
+                      onChange={(e) => setFormData({...formData, endTime: e.target.value})} 
                       className="h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base font-bold text-gray-900 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859] cursor-pointer"
                     />
                   </div>
@@ -1161,6 +1287,181 @@ export default function Journey() {
         onConfirm={confirmDelete}
         itemCount={selectedIds.size}
       />
+
+      {/* Broadcast Reminder Confirmation Dialog */}
+      <Dialog open={!!broadcastConfirmSchedule} onOpenChange={(open) => { if (!open && !broadcastingId) setBroadcastConfirmSchedule(null); }}>
+        <DialogContent className="w-[95vw] max-w-md bg-white rounded-3xl p-6 shadow-2xl border-0">
+          <DialogHeader>
+            <div className="w-12 h-12 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center mb-3">
+              <Send className="w-6 h-6" />
+            </div>
+            <DialogTitle className="text-lg font-bold text-gray-900 text-left">
+              Siarkan Pengingat Jadwal?
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-left py-2">
+            <p className="text-sm text-gray-600">
+              Notifikasi pengingat untuk agenda <span className="font-bold text-gray-900">"{broadcastConfirmSchedule?.title}"</span> akan disiarkan ke seluruh penerima aktif (Tour Leader, Jamaah, dan Keluarga) melalui sistem backend.
+            </p>
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600 space-y-1">
+              <div><strong className="text-slate-800">Waktu:</strong> {broadcastConfirmSchedule?.time} {broadcastConfirmSchedule?.effectiveEndTime ? `- ${broadcastConfirmSchedule?.effectiveEndTime}` : ''} WIB</div>
+              <div><strong className="text-slate-800">Lokasi:</strong> {broadcastConfirmSchedule?.location || '-'}</div>
+              <div><strong className="text-slate-800">Status Pengingat Saat Ini:</strong> {broadcastConfirmSchedule?.reminderStatus === 'published' ? 'Telah Disiarkan' : 'Belum Disiarkan'}</div>
+            </div>
+            <p className="text-xs text-gray-400 italic">
+              Catatan: Status "Telah Disiarkan" mencatat riwayat pemrosesan siaran di backend dan tidak menjamin penerimaan instan di perangkat jika offline.
+            </p>
+          </div>
+          <DialogFooter className="flex gap-2 sm:justify-end mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setBroadcastConfirmSchedule(null)}
+              disabled={!!broadcastingId}
+              className="rounded-xl"
+            >
+              Batal
+            </Button>
+            <Button
+              onClick={confirmBroadcast}
+              disabled={!!broadcastingId}
+              className="bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl"
+            >
+              {broadcastingId ? (
+                <span className="flex items-center gap-2">
+                  <RefreshCw className="w-4 h-4 animate-spin" /> Menyiarkan...
+                </span>
+              ) : (
+                'Ya, Siarkan Sekarang'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Status Management Modal */}
+      <Dialog open={!!statusModalSchedule} onOpenChange={(open) => { if (!open && !updatingStatusId) setStatusModalSchedule(null); }}>
+        <DialogContent className="w-[95vw] max-w-md bg-white rounded-3xl p-6 shadow-2xl border-0">
+          <DialogHeader>
+            <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mb-3">
+              <Activity className="w-6 h-6" />
+            </div>
+            <DialogTitle className="text-lg font-bold text-gray-900 text-left">
+              Kelola Status Pelaksanaan
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 text-left py-2">
+            <p className="text-sm text-gray-600">
+              Pilih mode pengelolaan status untuk agenda <span className="font-bold text-gray-900">"{statusModalSchedule?.title}"</span>:
+            </p>
+
+            {/* Mode selection radio */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-gray-600 uppercase tracking-wider block">
+                Mode Penentuan Status
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedStatusMode('auto')}
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                    selectedStatusMode === 'auto'
+                      ? 'border-emerald-600 bg-emerald-50/50 text-emerald-950 font-semibold ring-1 ring-emerald-600'
+                      : 'border-gray-200 hover:bg-gray-50 text-gray-700'
+                  }`}
+                >
+                  <div className="text-xs font-bold">Otomatis (Auto)</div>
+                  <div className="text-[11px] text-gray-500 mt-0.5">Dihitung timeline backend berdasarkan jam jadwal</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedStatusMode('manual')}
+                  className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                    selectedStatusMode === 'manual'
+                      ? 'border-amber-600 bg-amber-50/50 text-amber-950 font-semibold ring-1 ring-amber-600'
+                      : 'border-gray-200 hover:bg-gray-50 text-gray-700'
+                  }`}
+                >
+                  <div className="text-xs font-bold">Manual (Override)</div>
+                  <div className="text-[11px] text-gray-500 mt-0.5">Admin menetapkan status secara langsung</div>
+                </button>
+              </div>
+            </div>
+
+            {/* Target Status when manual is chosen */}
+            {selectedStatusMode === 'manual' && (
+              <div className="space-y-2 pt-2 border-t border-gray-100">
+                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider block">
+                  Pilih Status Pelaksanaan
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStatusOverride('upcoming')}
+                    className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                      selectedStatusOverride === 'upcoming'
+                        ? 'border-slate-700 bg-slate-100 text-slate-900 font-bold ring-1 ring-slate-700'
+                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    <Square className="w-4 h-4 mx-auto mb-1 text-slate-500" />
+                    <span className="text-xs block">Akan Datang</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStatusOverride('in_progress')}
+                    className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                      selectedStatusOverride === 'in_progress'
+                        ? 'border-blue-600 bg-blue-50 text-blue-900 font-bold ring-1 ring-blue-600'
+                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    <Activity className="w-4 h-4 mx-auto mb-1 text-blue-600" />
+                    <span className="text-xs block">Berlangsung</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStatusOverride('completed')}
+                    className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                      selectedStatusOverride === 'completed'
+                        ? 'border-green-600 bg-green-50 text-green-900 font-bold ring-1 ring-green-600'
+                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    <CheckSquare className="w-4 h-4 mx-auto mb-1 text-green-600" />
+                    <span className="text-xs block">Selesai</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="flex gap-2 sm:justify-end mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setStatusModalSchedule(null)}
+              disabled={!!updatingStatusId}
+              className="rounded-xl"
+            >
+              Batal
+            </Button>
+            <Button
+              onClick={handleUpdateStatus}
+              disabled={!!updatingStatusId}
+              className="bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl"
+            >
+              {updatingStatusId ? (
+                <span className="flex items-center gap-2">
+                  <RefreshCw className="w-4 h-4 animate-spin" /> Menyimpan...
+                </span>
+              ) : (
+                'Simpan Status'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

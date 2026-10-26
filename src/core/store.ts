@@ -143,17 +143,30 @@ export type ScheduleCategory = string;
 
 export type Schedule = {
   id: string;
-
+  dayNumber?: number;
   date: string;
   time: string;
+  endTime?: string;
+  inferredEndTime?: string;
+  effectiveEndTime?: string;
+  effectiveEndDatetime?: string;
   title: string;
+  category?: ScheduleCategory;
   location: string;
   keterangan: string;
-  category?: ScheduleCategory;
-  statusOverride?: 'completed' | 'in_progress' | 'upcoming';
-  status?: 'completed' | 'in_progress' | 'upcoming';
   pic?: string;
-  dayNumber?: number;
+  status?: 'completed' | 'in_progress' | 'upcoming';
+  statusOverride?: 'completed' | 'in_progress' | 'upcoming';
+  statusMode?: 'auto' | 'manual';
+  statusUpdatedByType?: string;
+  statusUpdatedById?: string;
+  statusUpdatedAt?: string;
+  reminderStatus?: 'draft' | 'published';
+  broadcastedAt?: string;
+  broadcastedByType?: string;
+  broadcastedById?: string;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type Emergency = {

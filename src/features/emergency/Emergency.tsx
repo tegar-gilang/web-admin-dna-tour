@@ -1541,7 +1541,8 @@ export default function Emergency() {
                     </h2>
 
                     <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
-                      {statusHistories.map((hist, idx) => {
+                      {Array.isArray(statusHistories) && statusHistories.map((hist, idx) => {
+                        if (!hist) return null;
                         const actor =
                           hist.internal_user?.full_name ||
                           (hist as any).internalUser?.full_name ||
@@ -1550,7 +1551,7 @@ export default function Emergency() {
                           'Petugas';
                         return (
                           <div 
-                            key={hist.id || idx}
+                            key={hist.id || `hist-${idx}`}
                             className="bg-gray-50 border border-gray-200/80 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
                           >
                             <div className="flex items-start gap-2.5">
