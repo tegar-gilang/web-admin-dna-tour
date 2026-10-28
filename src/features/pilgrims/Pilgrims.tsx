@@ -380,6 +380,7 @@ export default function Pilgrims() {
   // ==========================================
 
   const confirmDelete = async () => {
+    if (isLoadingJamaah || selectedIds.size === 0) return;
     try {
       setIsLoadingJamaah(true);
       setJamaahError(null);
@@ -412,7 +413,7 @@ export default function Pilgrims() {
       setIsDeleteDialogOpen(false);
 
       toast(
-        'Data jamaah berhasil dihapus.',
+        'Data jamaah berhasil dihapus dan dipindahkan ke Riwayat Hapus.',
         'success'
       );
     } catch (error) {
@@ -2759,8 +2760,9 @@ export default function Pilgrims() {
       {/* Delete Confirmation */}
       <ConfirmDeleteDialog
         isOpen={isDeleteDialogOpen}
+        isLoading={isLoadingJamaah}
         onClose={() =>
-          setIsDeleteDialogOpen(false)
+          !isLoadingJamaah && setIsDeleteDialogOpen(false)
         }
         onConfirm={confirmDelete}
         itemCount={selectedIds.size}
