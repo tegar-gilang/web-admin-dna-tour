@@ -182,12 +182,21 @@ export type Emergency = {
 };
 
 export type BroadcastItem = {
-  id: number;
+  id: string | number;
   title: string;
   message: string;
   target: string;
   time: string;
   date?: string;
+  category?: string;
+  priority?: 'normal' | 'urgent';
+  targetType?: 'all' | 'kloter';
+  kloterIds?: string[];
+  stats?: {
+    totalRecipients: number;
+    readCount: number;
+    unreadCount: number;
+  };
   originalTime?: string;
   originalDate?: string;
   isEdited?: boolean;
@@ -369,9 +378,10 @@ type StoreState = {
   setFinanceSummary: (summary: FinanceSummary) => void;
 
   // Broadcast actions
+  setBroadcasts: (broadcasts: BroadcastItem[]) => void;
   addBroadcast: (b: BroadcastItem) => void;
-  updateBroadcast: (id: number, updates: Partial<BroadcastItem>) => void;
-  deleteBroadcasts: (ids: number[]) => void;
+  updateBroadcast: (id: string | number, updates: Partial<BroadcastItem>) => void;
+  deleteBroadcasts: (ids: (string | number)[]) => void;
 };
 
 export const useStore = create<StoreState>((set) => ({
@@ -423,12 +433,7 @@ export const useStore = create<StoreState>((set) => ({
     set({ isAuthenticated: false, token: null, user: null });
   },
 
-  broadcasts: [
-    { id: 4, title: "Cuaca Ekstrem Terik", message: "Cuaca hari ini diperkirakan sangat terik. Seluruh jamaah diwajibkan membawa payung dan botol air minum.", target: "Semua Jamaah", time: "05.00", date: "2026-07-28", originalTime: "05.00", originalDate: "2026-07-28" },
-    { id: 3, title: "Perubahan Jadwal Ziarah", message: "Ziarah Madinah diundur menjadi pukul 10.00 karena kepadatan lalu lintas.", target: "Group A-1", time: "06.15", date: "2026-07-28", originalTime: "06.15", originalDate: "2026-07-28" },
-    { id: 2, title: "Pembagian Koper Tambahan", message: "Tour leader harap mengambil tag koper tambahan di ruang administrasi.", target: "Semua Tour Leader", time: "09.30", date: "2026-07-27", originalTime: "09.30", originalDate: "2026-07-27" },
-    { id: 1, title: "Persiapan Keberangkatan Makkah", message: "Jamaah mohon mempersiapkan diri di lobi hotel 1 jam sebelum keberangkatan menuju Makkah.", target: "Kloter KLT-01", time: "08.00", date: "2026-07-26", originalTime: "08.00", originalDate: "2026-07-26" },
-  ],
+  broadcasts: [],
 
   pilgrims: [
     { 
@@ -1537,6 +1542,7 @@ export const useStore = create<StoreState>((set) => ({
   setFinanceSummary: (summary) => set({ financeSummary: summary }),
 
   // Broadcast actions
+  setBroadcasts: (broadcasts) => set({ broadcasts }),
   addBroadcast: (b) => set((state) => {
     const item: BroadcastItem = {
       ...b,
@@ -1547,7 +1553,7 @@ export const useStore = create<StoreState>((set) => ({
     return { broadcasts: [item, ...state.broadcasts] };
   }),
   updateBroadcast: (id, updates) => set((state) => {
-    const existing = state.broadcasts.find(b => b.id === id);
+    const existing = state.broadcasts.find(b => b.id.toString() === id.toString());
     if (!existing) return state;
     const updatedItem: BroadcastItem = {
       ...existing,
@@ -1558,15 +1564,16 @@ export const useStore = create<StoreState>((set) => ({
       updatedAt: new Date().toISOString()
     };
     return {
-      broadcasts: [updatedItem, ...state.broadcasts.filter(b => b.id !== id)]
+      broadcasts: [updatedItem, ...state.broadcasts.filter(b => b.id.toString() !== id.toString())]
     };
   }),
   deleteBroadcasts: (ids) => set((state) => {
+    const stringIds = ids.map(id => id.toString());
     let itemsToDelete = [];
-    if (ids.length === 0) {
+    if (stringIds.length === 0) {
       itemsToDelete = [...state.broadcasts];
     } else {
-      itemsToDelete = state.broadcasts.filter(b => ids.includes(b.id));
+      itemsToDelete = state.broadcasts.filter(b => stringIds.includes(b.id.toString()));
     }
     
     const newTrashItems = itemsToDelete.map(item => ({
@@ -1579,7 +1586,7 @@ export const useStore = create<StoreState>((set) => ({
     }));
     
     return {
-      broadcasts: ids.length === 0 ? [] : state.broadcasts.filter(b => !ids.includes(b.id)),
+      broadcasts: stringIds.length === 0 ? [] : state.broadcasts.filter(b => !stringIds.includes(b.id.toString())),
       trashItems: [...newTrashItems, ...state.trashItems]
     };
   }),

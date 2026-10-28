@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useStore, BroadcastItem } from '@/core/store';
+import { broadcastService, BroadcastModel, CreateBroadcastPayload } from '@/core/services/broadcastService';
 import { toast } from '@/lib/toast';
 import { ConfirmDeleteDialog } from '@/components/ui/ConfirmDeleteDialog';
 import { Card, CardContent } from '@/components/ui/Card';
@@ -13,7 +14,7 @@ import {
   Megaphone, Send, Users, Filter, Trash2, Search, X, 
   CheckCircle2, Clock, BellRing, Eye, 
   PlusCircle, Radio, UserCheck, ShieldCheck, MessageSquareText, Calendar,
-  Edit3, Pencil, AlertCircle, Check
+  Edit3, Pencil, AlertCircle, Check, RefreshCw
 } from 'lucide-react';
 
 export default function Broadcast() {
@@ -23,7 +24,25 @@ export default function Broadcast() {
 // Komponen utama untuk fitur BROADCAST
 // ==========================================
 
-  const { broadcasts, addBroadcast, updateBroadcast, deleteBroadcasts, groups, tourLeaders, mutawifs, pilgrims } = useStore();
+  const { broadcasts, setBroadcasts, addBroadcast, updateBroadcast, deleteBroadcasts, groups, tourLeaders, mutawifs, pilgrims } = useStore();
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Pagination server-side
+  const [serverPage, setServerPage] = useState(1);
+  const [serverTotalPages, setServerTotalPages] = useState(1);
+  const [serverTotalRecords, setServerTotalRecords] = useState(0);
+
+  // Idempotency key per-submit
+  const [activeIdempotencyKey, setActiveIdempotencyKey] = useState<string>(() => crypto.randomUUID());
+
+  // Form State for Create
+  const [targetType, setTargetType] = useState<'all' | 'kloter'>('all');
+  const [selectedKloterId, setSelectedKloterId] = useState<string>('');
+  const [priority, setPriority] = useState<'normal' | 'urgent'>('normal');
+  const [category, setCategory] = useState<string>('general');
+  const [sendToFamily, setSendToFamily] = useState<boolean>(true);
 
   // Extract unique kloters from groups & pilgrims
   const uniqueKloters = useMemo(() => {
@@ -39,7 +58,7 @@ export default function Broadcast() {
   const [filterTargetGroup, setFilterTargetGroup] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string | number>>(new Set());
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   // Modal Send / Create Broadcast state
@@ -61,7 +80,69 @@ export default function Broadcast() {
   const [editMessage, setEditMessage] = useState('');
   const [editTarget, setEditTarget] = useState('Semua Jamaah');
   const [editBroadcastDate, setEditBroadcastDate] = useState('');
+  const [editCategory, setEditCategory] = useState<string>('general');
+  const [editPriority, setEditPriority] = useState<'normal' | 'urgent'>('normal');
   const [isUpdating, setIsUpdating] = useState(false);
+
+  // Helper pemetaan model API ke BroadcastItem UI
+  const mapBackendModelToItem = useCallback((m: BroadcastModel): BroadcastItem => {
+    let targetLabel = 'Semua Jamaah (Global)';
+    let kloterIds: string[] = [];
+
+    if (m.target_type === 'kloter') {
+      if (m.recipient_kloters && m.recipient_kloters.length > 0) {
+        targetLabel = m.recipient_kloters.map(k => k.name || `Kloter ${k.code}`).join(', ');
+        kloterIds = m.recipient_kloters.map(k => k.id);
+      } else {
+        targetLabel = 'Kloter Tertentu';
+      }
+    }
+
+    const sentDate = m.sent_at ? new Date(m.sent_at) : (m.created_at ? new Date(m.created_at) : new Date());
+    const dateFormatted = sentDate.toISOString().split('T')[0];
+    const timeFormatted = sentDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }).replace(':', '.');
+
+    const isEdited = Boolean(m.updated_at && m.created_at && new Date(m.updated_at).getTime() > new Date(m.created_at).getTime() + 1000);
+
+    return {
+      id: m.id,
+      title: m.title || 'Pengumuman',
+      message: m.message,
+      target: targetLabel,
+      targetType: m.target_type,
+      kloterIds,
+      time: timeFormatted,
+      date: dateFormatted,
+      category: m.category,
+      priority: m.priority,
+      isEdited,
+      originalTime: timeFormatted,
+      originalDate: dateFormatted,
+      updatedAt: m.updated_at,
+    };
+  }, []);
+
+  // Fetch broadcasts dari backend
+  const fetchBroadcasts = useCallback(async (page = 1) => {
+    setIsLoading(true);
+    setLoadError(null);
+    try {
+      const result = await broadcastService.getBroadcasts({ page, per_page: 8 });
+      const items = result.data.map(mapBackendModelToItem);
+      setBroadcasts(items);
+      setServerPage(result.current_page);
+      setServerTotalPages(result.last_page);
+      setServerTotalRecords(result.total);
+    } catch (err: any) {
+      setLoadError(err.message || 'Gagal memuat daftar siaran dari server');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [mapBackendModelToItem, setBroadcasts]);
+
+  useEffect(() => {
+    fetchBroadcasts(1);
+  }, [fetchBroadcasts]);
 
   // Time formatter: converts any time string to 24h format (00.00 - 23.59)
   const formatBroadcastTime = (timeStr?: string): string => {
@@ -181,7 +262,7 @@ export default function Broadcast() {
     }
   };
 
-  const toggleSelect = (id: number) => {
+  const toggleSelect = (id: string | number) => {
     const next = new Set(selectedIds);
     if (next.has(id)) next.delete(id);
     else next.add(id);
@@ -206,35 +287,53 @@ export default function Broadcast() {
   const handleOpenCreateModal = () => {
     setTitle('');
     setMessage('');
-    setTarget('Semua Jamaah');
-    setBroadcastDate(new Date().toISOString().split('T')[0]);
+    setTargetType('all');
+    setSelectedKloterId('');
+    setPriority('normal');
+    setCategory('general');
+    setSendToFamily(true);
+    setActiveIdempotencyKey(crypto.randomUUID());
     setIsCreateModalOpen(true);
   };
 
-  const handleSendBroadcast = (e: React.FormEvent) => {
+  const handleSendBroadcast = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !message.trim()) {
       toast("Judul dan isi pesan siaran wajib diisi", "error");
       return;
     }
 
-    setIsSending(true);
-    setTimeout(() => {
-      const timeFormatted = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }).replace(':', '.');
-      const newBroadcast: BroadcastItem = {
-        id: Date.now(),
-        title: title.trim(),
-        message: message.trim(),
-        target,
-        time: timeFormatted,
-        date: broadcastDate || new Date().toISOString().split('T')[0]
-      };
+    if (targetType === 'kloter' && !selectedKloterId) {
+      toast("Pilih kloter tujuan siaran", "error");
+      return;
+    }
 
-      addBroadcast(newBroadcast);
-      toast(`Pesan siaran berhasil dipancarkan ke target: ${target}`, "success");
-      setIsSending(false);
+    setIsSending(true);
+
+    const payload: CreateBroadcastPayload = {
+      title: title.trim(),
+      message: message.trim(),
+      category,
+      priority,
+      target_type: targetType,
+      kloter_ids: targetType === 'kloter' && selectedKloterId ? [selectedKloterId] : undefined,
+      send_to_family: sendToFamily,
+    };
+
+    try {
+      const response = await broadcastService.createBroadcast(payload, activeIdempotencyKey);
+      const newItem = mapBackendModelToItem(response.broadcast);
+      addBroadcast(newItem);
+      toast(`Pesan siaran berhasil dipancarkan ke ${response.recipients_count} penerima`, "success");
       setIsCreateModalOpen(false);
-    }, 500);
+      // Buat idempotency key baru untuk form berikutnya
+      setActiveIdempotencyKey(crypto.randomUUID());
+      fetchBroadcasts(1);
+    } catch (err: any) {
+      toast(err.message || "Gagal menerbitkan siaran. Silakan coba lagi.", "error");
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const handleOpenEditModal = (b: BroadcastItem) => {
@@ -242,6 +341,8 @@ export default function Broadcast() {
     setEditTitle(b.title);
     setEditMessage(b.message);
     setEditTarget(b.target);
+    setEditCategory(b.category || 'general');
+    setEditPriority(b.priority || 'normal');
     setEditBroadcastDate(b.date || new Date().toISOString().split('T')[0]);
     setIsEditModalOpen(true);
     if (isDetailModalOpen) {
@@ -249,7 +350,7 @@ export default function Broadcast() {
     }
   };
 
-  const handleUpdateBroadcast = (e: React.FormEvent) => {
+  const handleUpdateBroadcast = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingBroadcast) return;
     if (!editTitle.trim() || !editMessage.trim()) {
@@ -258,32 +359,42 @@ export default function Broadcast() {
     }
 
     setIsUpdating(true);
-    setTimeout(() => {
-      const currentTime = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }).replace(':', '.');
-      const currentDate = editBroadcastDate || new Date().toISOString().split('T')[0];
-
-      updateBroadcast(editingBroadcast.id, {
+    try {
+      const updatedModel = await broadcastService.updateBroadcast(editingBroadcast.id.toString(), {
         title: editTitle.trim(),
         message: editMessage.trim(),
-        target: editTarget,
-        time: currentTime,
-        date: currentDate,
-        isEdited: true,
-        updatedAt: new Date().toISOString(),
-        updatedTime: currentTime,
-        updatedDate: currentDate
+        category: editCategory,
+        priority: editPriority,
       });
 
-      toast(`Siaran berhasil diedit & disinkronkan kembali pada pukul ${currentTime} WIB`, "success");
-      setIsUpdating(false);
+      const updatedItem = mapBackendModelToItem(updatedModel);
+      updateBroadcast(editingBroadcast.id, updatedItem);
+      toast("Siaran berhasil diperbarui di server", "success");
       setIsEditModalOpen(false);
       setEditingBroadcast(null);
-    }, 450);
+      fetchBroadcasts(serverPage);
+    } catch (err: any) {
+      toast(err.message || "Gagal memperbarui siaran", "error");
+    } finally {
+      setIsUpdating(false);
+    }
   };
 
-  const handleOpenDetail = (b: BroadcastItem) => {
+  const handleOpenDetail = async (b: BroadcastItem) => {
     setSelectedBroadcast(b);
     setIsDetailModalOpen(true);
+    try {
+      const detail = await broadcastService.getBroadcastById(b.id.toString());
+      const updatedItem = mapBackendModelToItem(detail.broadcast);
+      updatedItem.stats = {
+        totalRecipients: detail.stats.total_recipients,
+        readCount: detail.stats.read_count,
+        unreadCount: detail.stats.unread_count,
+      };
+      setSelectedBroadcast(updatedItem);
+    } catch {
+      // Pertahankan item lokal jika detail API gagal
+    }
   };
 
   // Maintain store ordering (newly added & recently edited broadcasts are placed at the top)
@@ -965,42 +1076,27 @@ export default function Broadcast() {
                   </label>
                   <div className="relative">
                     <select 
-                      value={target}
-                      onChange={(e) => setTarget(e.target.value)}
+                      value={targetType === 'all' ? 'all' : selectedKloterId}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === 'all') {
+                          setTargetType('all');
+                          setSelectedKloterId('');
+                        } else {
+                          setTargetType('kloter');
+                          setSelectedKloterId(val);
+                        }
+                      }}
                       className="appearance-none w-full h-12 sm:h-13 rounded-2xl border border-gray-300 bg-white px-4 sm:px-5 text-base font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859] shadow-2xs cursor-pointer"
                     >
-                      <option value="Semua Jamaah">Semua Jamaah (Global)</option>
-                      <option value="Semua Tour Leader">Semua Tour Leader</option>
-                      <option value="Semua Mutawif">Semua Mutawif</option>
+                      <option value="all">Semua Jamaah (Global Aktif)</option>
                       
-                      {uniqueKloters.length > 0 && (
-                        <optgroup label="Berdasarkan Kloter">
-                          {uniqueKloters.map(k => (
-                            <option key={k} value={`Kloter ${k}`}>Kloter {k}</option>
-                          ))}
-                        </optgroup>
-                      )}
-
                       {groups.length > 0 && (
-                        <optgroup label="Berdasarkan Rombongan">
+                        <optgroup label="Berdasarkan Kloter Keberangkatan">
                           {groups.map(g => (
-                            <option key={g.id} value={`${g.name} (${g.kloter})`}>{g.name} - {g.kloter}</option>
-                          ))}
-                        </optgroup>
-                      )}
-
-                      {tourLeaders.length > 0 && (
-                        <optgroup label="Tour Leader Personal">
-                          {tourLeaders.map(tl => (
-                            <option key={tl.id} value={`Tour Leader: ${tl.name}`}>{tl.name} ({tl.group || 'Standby'})</option>
-                          ))}
-                        </optgroup>
-                      )}
-
-                      {mutawifs.length > 0 && (
-                        <optgroup label="Mutawif Personal">
-                          {mutawifs.map(m => (
-                            <option key={m.id} value={`Mutawif: ${m.name}`}>{m.name} ({m.group || 'Standby'})</option>
+                            <option key={g.backendId || g.id} value={g.backendId || g.id}>
+                              {g.name} ({g.kloter || g.id})
+                            </option>
                           ))}
                         </optgroup>
                       )}
@@ -1011,19 +1107,46 @@ export default function Broadcast() {
                   </div>
                 </div>
 
-                {/* Tanggal Siaran */}
+                {/* Prioritas & Kategori */}
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-[#782820]" /> Tanggal Siaran
+                    <Radio className="w-3.5 h-3.5 text-[#782820]" /> Prioritas & Kategori
                   </label>
-                  <Input 
-                    type="date"
-                    value={broadcastDate}
-                    onChange={(e) => setBroadcastDate(e.target.value)}
-                    className="w-full h-12 sm:h-13 rounded-2xl border-gray-300 bg-white px-4 sm:px-5 text-base font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859] shadow-2xs"
-                    required
-                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={priority}
+                      onChange={(e) => setPriority(e.target.value as 'normal' | 'urgent')}
+                      className="w-full h-12 sm:h-13 rounded-2xl border border-gray-300 bg-white px-3 text-sm font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#00a859]"
+                    >
+                      <option value="normal">Normal</option>
+                      <option value="urgent">Urgent</option>
+                    </select>
+                    <select
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                      className="w-full h-12 sm:h-13 rounded-2xl border border-gray-300 bg-white px-3 text-sm font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#00a859]"
+                    >
+                      <option value="general">Umum</option>
+                      <option value="ibadah">Ibadah</option>
+                      <option value="ziarah">Ziarah</option>
+                      <option value="logistik">Logistik</option>
+                    </select>
+                  </div>
                 </div>
+              </div>
+
+              {/* Opsi Distribusi Keluarga */}
+              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <p className="text-xs font-bold text-gray-800">Kirim juga ke Aplikasi Keluarga</p>
+                  <p className="text-[11px] text-gray-500">Keluarga jamaah yang terhubung akan menerima pemberitahuan ini</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={sendToFamily}
+                  onChange={(e) => setSendToFamily(e.target.checked)}
+                  className="w-5 h-5 rounded-md text-[#740A03] focus:ring-[#740A03] cursor-pointer"
+                />
               </div>
 
               {/* Judul Siaran */}
@@ -1034,6 +1157,7 @@ export default function Broadcast() {
                 <Input 
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
+                  maxLength={150}
                   placeholder="Contoh: Jadwal Kumpul Lobi Hotel & Keberangkatan Raudhah"
                   className="w-full h-12 sm:h-13 rounded-2xl border-gray-300 bg-white px-4 sm:px-5 text-base font-bold text-gray-900 placeholder:text-gray-400 placeholder:font-normal focus:outline-none focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859] shadow-2xs"
                   required
@@ -1046,11 +1170,12 @@ export default function Broadcast() {
                   <label className="text-xs font-bold text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
                     <MessageSquareText className="w-3.5 h-3.5 text-purple-600" /> Isi Pesan Siaran
                   </label>
-                  <span className="text-[11px] font-bold text-gray-400">{message.length} karakter</span>
+                  <span className="text-[11px] font-bold text-gray-400">{message.length}/2000 karakter</span>
                 </div>
                 <textarea 
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
+                  maxLength={2000}
                   rows={5}
                   placeholder="Tuliskan instruksi detail atau pengumuman yang wajib diperhatikan oleh jamaah..."
                   className="w-full rounded-2xl border border-gray-300 bg-white p-4 sm:p-5 text-base font-bold text-gray-900 placeholder:text-gray-400 placeholder:font-normal focus:outline-none focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859] shadow-2xs resize-none leading-relaxed"
@@ -1324,46 +1449,36 @@ export default function Broadcast() {
                 </div>
               </div>
 
-              {/* Baris 1: Target Penerima & Tanggal Siaran */}
+              {/* Baris 1: Kategori & Prioritas */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Target Penerima */}
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
-                    <Users className="w-3.5 h-3.5 text-emerald-600" /> Target Penerima
+                    <Radio className="w-3.5 h-3.5 text-blue-600" /> Kategori
                   </label>
                   <select 
-                    value={editTarget}
-                    onChange={(e) => setEditTarget(e.target.value)}
-                    className="w-full h-12 sm:h-13 rounded-2xl border-gray-300 bg-white px-4 sm:px-5 text-sm sm:text-base font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 shadow-2xs cursor-pointer"
+                    value={editCategory}
+                    onChange={(e) => setEditCategory(e.target.value)}
+                    className="w-full h-12 sm:h-13 rounded-2xl border-gray-300 bg-white px-4 text-sm font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer"
                   >
-                    <optgroup label="Penerima Global">
-                      <option value="Semua Jamaah">Semua Jamaah (Global)</option>
-                    </optgroup>
-                    <optgroup label="Kloter & Rombongan">
-                      {uniqueKloters.map((k, idx) => (
-                        <option key={idx} value={k}>{k}</option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="Petugas & Tim">
-                      <option value="Semua Tour Leader">Semua Tour Leader</option>
-                      <option value="Semua Mutawif">Semua Mutawif</option>
-                      <option value="Seluruh Tim Operasional">Seluruh Tim Operasional (TL & Mutawif)</option>
-                    </optgroup>
+                    <option value="general">Umum</option>
+                    <option value="ibadah">Ibadah</option>
+                    <option value="ziarah">Ziarah</option>
+                    <option value="logistik">Logistik</option>
                   </select>
                 </div>
 
-                {/* Tanggal Siaran */}
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-amber-600" /> Tanggal Siaran
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-600" /> Prioritas
                   </label>
-                  <Input 
-                    type="date"
-                    value={editBroadcastDate}
-                    onChange={(e) => setEditBroadcastDate(e.target.value)}
-                    className="w-full h-12 sm:h-13 rounded-2xl border-gray-300 bg-white px-4 sm:px-5 text-base font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 shadow-2xs"
-                    required
-                  />
+                  <select
+                    value={editPriority}
+                    onChange={(e) => setEditPriority(e.target.value as 'normal' | 'urgent')}
+                    className="w-full h-12 sm:h-13 rounded-2xl border-gray-300 bg-white px-4 text-sm font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer"
+                  >
+                    <option value="normal">Normal</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
                 </div>
               </div>
 
