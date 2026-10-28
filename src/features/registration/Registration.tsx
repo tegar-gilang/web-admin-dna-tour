@@ -544,34 +544,35 @@ export default function Registration() {
     setIsDeleteDialogOpen(true);
   };
 
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const confirmDelete = async () => {
+    if (isDeleting || selectedIds.size === 0) return;
     try {
+      setIsDeleting(true);
       setFetchingRegistrations(true);
 
-      const ids =
-        Array.from(selectedIds);
+      const ids = Array.from(selectedIds);
 
       await Promise.all(
-        ids.map((id) =>
-          registrationService.cancelRegistration(
-            id
-          )
-        )
+        ids.map((id) => registrationService.deleteRegistration(id))
       );
 
-      deletePilgrims(ids);
+      // Sinkronkan state lokal: hapus dari daftar aktif
+      setPilgrims(pilgrims.filter((p) => !selectedIds.has(p.id)));
       setSelectedIds(new Set());
 
       toast(
-        'Data pendaftaran berhasil dihapus (dibatalkan).',
+        'Data pendaftaran berhasil dihapus dan dipindahkan ke Riwayat Hapus.',
         'success'
       );
     } catch (err: any) {
       toast(
-        'Gagal menghapus/membatalkan pendaftaran dari server.',
+        err?.message || 'Gagal menghapus data pendaftaran dari server.',
         'error'
       );
     } finally {
+      setIsDeleting(false);
       setFetchingRegistrations(false);
       setIsDeleteDialogOpen(false);
     }
@@ -3696,8 +3697,9 @@ export default function Registration() {
         isOpen={
           isDeleteDialogOpen
         }
+        isLoading={isDeleting}
         onClose={() =>
-          setIsDeleteDialogOpen(false)
+          !isDeleting && setIsDeleteDialogOpen(false)
         }
         onConfirm={
           confirmDelete
