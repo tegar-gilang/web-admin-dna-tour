@@ -42,7 +42,6 @@ export default function Broadcast() {
   const [selectedKloterId, setSelectedKloterId] = useState<string>('');
   const [priority, setPriority] = useState<'normal' | 'urgent'>('normal');
   const [category, setCategory] = useState<string>('general');
-  const [sendToFamily, setSendToFamily] = useState<boolean>(true);
 
   // Extract unique kloters from groups & pilgrims
   const uniqueKloters = useMemo(() => {
@@ -291,7 +290,6 @@ export default function Broadcast() {
     setSelectedKloterId('');
     setPriority('normal');
     setCategory('general');
-    setSendToFamily(true);
     setActiveIdempotencyKey(crypto.randomUUID());
     setIsCreateModalOpen(true);
   };
@@ -317,7 +315,6 @@ export default function Broadcast() {
       priority,
       target_type: targetType,
       kloter_ids: targetType === 'kloter' && selectedKloterId ? [selectedKloterId] : undefined,
-      send_to_family: sendToFamily,
     };
 
     try {
@@ -1133,20 +1130,6 @@ export default function Broadcast() {
                     </select>
                   </div>
                 </div>
-              </div>
-
-              {/* Opsi Distribusi Keluarga */}
-              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <p className="text-xs font-bold text-gray-800">Kirim juga ke Aplikasi Keluarga</p>
-                  <p className="text-[11px] text-gray-500">Keluarga jamaah yang terhubung akan menerima pemberitahuan ini</p>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={sendToFamily}
-                  onChange={(e) => setSendToFamily(e.target.checked)}
-                  className="w-5 h-5 rounded-md text-[#740A03] focus:ring-[#740A03] cursor-pointer"
-                />
               </div>
 
               {/* Judul Siaran */}

@@ -76,7 +76,6 @@ export interface CreateBroadcastPayload {
   priority?: BroadcastPriority;
   target_type: BroadcastTargetType;
   kloter_ids?: string[];
-  send_to_family?: boolean;
 }
 
 export interface UpdateBroadcastPayload {
