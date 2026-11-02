@@ -50,6 +50,8 @@ import {
   DialogContent,
 } from '@/components/ui/Dialog';
 import { exportMasterWorkbookToExcel } from '@/lib/export';
+import { registrationService } from '@/core/services/registrationService';
+import { formatJamaahId, formatDateIndo } from '@/lib/utils';
 import { kloterService } from '@/core/services/kloterService';
 import { packageService } from '@/core/services/packageService';
 import {
@@ -112,6 +114,10 @@ export default function Pilgrims() {
   const [isLoadingJamaah, setIsLoadingJamaah] = useState(false);
   const [jamaahError, setJamaahError] = useState<string | null>(null);
 
+  const [registrations, setRegistrations] = useState<Pilgrim[]>([]);
+  const [isLoadingRegistrations, setIsLoadingRegistrations] = useState(false);
+  const [registrationError, setRegistrationError] = useState<string | null>(null);
+
   const todayStr = new Date().toISOString().split('T')[0];
 
   // ==========================================
@@ -143,6 +149,26 @@ export default function Pilgrims() {
   }, [setPilgrims]);
 
   useEffect(() => {
+    const fetchRegistrations = async () => {
+      setIsLoadingRegistrations(true);
+      setRegistrationError(null);
+      try {
+        const data = await registrationService.getRegistrations();
+        setRegistrations(data);
+      } catch (error) {
+        console.error('Gagal mengambil data registrasi untuk perlengkapan:', error);
+        setRegistrationError(
+          error instanceof Error ? error.message : 'Gagal mengambil data registrasi.'
+        );
+      } finally {
+        setIsLoadingRegistrations(false);
+      }
+    };
+
+    fetchRegistrations();
+  }, []);
+
+  useEffect(() => {
     const fetchKlotersAndTourLeaders = async () => {
       try {
         const [klotersData, tourLeadersData, packagesData] = await Promise.all([
@@ -162,42 +188,63 @@ export default function Pilgrims() {
     fetchKlotersAndTourLeaders();
   }, [setGroups, setTourLeaders]);
 
-  const formatIndoDate = (
-    dateStr?: string,
-    fallback: string = '-'
-  ) => {
-    if (!dateStr) return fallback;
-    const cleaned = formatDateForInput(dateStr);
-    if (!cleaned) return fallback;
-    const parts = cleaned.split('-');
-    if (parts.length !== 3) return dateStr;
-    const year = parseInt(parts[0], 10);
-    const monthIdx = parseInt(parts[1], 10) - 1;
-    const day = parseInt(parts[2], 10);
-    const months = [
-      'Januari',
-      'Februari',
-      'Maret',
-      'April',
-      'Mei',
-      'Juni',
-      'Juli',
-      'Agustus',
-      'September',
-      'Oktober',
-      'November',
-      'Desember',
-    ];
-    if (
-      isNaN(year) ||
-      isNaN(monthIdx) ||
-      isNaN(day) ||
-      monthIdx < 0 ||
-      monthIdx > 11
-    ) {
-      return dateStr;
+  // ==========================================
+  // REGISTRATION LOOKUP UNTUK PERLENGKAPAN (KERUDUNG)
+  // Relasi resmi: registration.pilgrimId === jamaah.id (login_id)
+  // ==========================================
+  const registrationLookup = useMemo(() => {
+    // 1. Kelompokkan seluruh registrasi per pilgrimId
+    const groupsByPilgrim = new Map<string, Pilgrim[]>();
+    for (const reg of registrations) {
+      if (reg.pilgrimId && reg.pilgrimId.trim()) {
+        const key = reg.pilgrimId.trim();
+        const list = groupsByPilgrim.get(key) || [];
+        list.push(reg);
+        groupsByPilgrim.set(key, list);
+      }
     }
-    return `${day} ${months[monthIdx]} ${year}`;
+
+    // 2. Untuk setiap pilgrimId, pilih registrasi dengan created_at paling baru (latest_first)
+    // Aturan bisnis FINAL:
+    // - Status 'cancelled' tetap diperhitungkan
+    // - Status pembayaran (dp_paid, fully_paid, unpaid) tidak memengaruhi pemilihan
+    // - Tie-breaker: jika created_at identik atau tidak tersedia, urutkan deterministik
+    const map = new Map<string, Pilgrim>();
+    for (const [pilgrimId, list] of groupsByPilgrim.entries()) {
+      if (list.length === 1) {
+        map.set(pilgrimId, list[0]);
+      } else {
+        const sorted = [...list].sort((a, b) => {
+          const timeA = a.createdAt ? new Date(a.createdAt).getTime() : (a.registrationDate ? new Date(a.registrationDate).getTime() : 0);
+          const timeB = b.createdAt ? new Date(b.createdAt).getTime() : (b.registrationDate ? new Date(b.registrationDate).getTime() : 0);
+          if (timeB !== timeA) {
+            return timeB - timeA; // latest first
+          }
+          // Tie-breaker konsisten: urutkan descending berdasarkan formId / id
+          return (b.formId || b.id || '').localeCompare(a.formId || a.id || '');
+        });
+        map.set(pilgrimId, sorted[0]);
+      }
+    }
+    return map;
+  }, [registrations]);
+
+  const getKerudungStatus = (
+    jamaahId: string,
+    equipmentName: 'Kerudung Merah' | 'Kerudung Putih'
+  ): string => {
+    if (isLoadingRegistrations || registrationError || registrations.length === 0) {
+      return '-';
+    }
+    const reg = registrationLookup.get(jamaahId);
+    if (!reg) {
+      return '-';
+    }
+    const eq = reg.equipments?.find((e) => e.equipment_name === equipmentName);
+    if (!eq) {
+      return '-';
+    }
+    return eq.is_received ? 'Sudah' : 'Belum';
   };
 
   // ==========================================
@@ -312,8 +359,8 @@ export default function Pilgrims() {
       const matchesDeparture = filterDepartureDate
         ? p.departureDate === filterDepartureDate ||
           (p.departureDate &&
-            formatIndoDate(p.departureDate) ===
-              formatIndoDate(filterDepartureDate))
+            formatDateIndo(p.departureDate) ===
+              formatDateIndo(filterDepartureDate))
         : true;
 
       let matchesPassport = true;
@@ -700,6 +747,10 @@ export default function Pilgrims() {
   // ==========================================
 
   const handleExportExcel = async () => {
+    if (isLoadingRegistrations) {
+      toast('Sedang memuat data registrasi untuk perlengkapan kerudung. Silakan coba sesaat lagi.', 'info');
+      return;
+    }
     try {
       const totalIncome =
         financeTransactions
@@ -804,7 +855,7 @@ export default function Pilgrims() {
           title:
             'Master Data Jamaah Umrah - DNA Tour',
           data: targetPilgrims.map((p) => ({
-            'ID Jamaah': p.id,
+            'ID Jamaah': formatJamaahId({ loginId: p.id }),
             'Nama Lengkap': p.name,
             'NIK': p.ktp || '-',
             'No. Paspor': p.passport || '-',
@@ -820,8 +871,10 @@ export default function Pilgrims() {
             'Mutawif Local': (() => { const grp = groups.find(g => g.backendId === p.kloterId || g.id === p.kloterId || g.name === p.group); return grp?.mutawifs?.length ? grp.mutawifs.map(m => m.name).join(', ') : (p.mutawifLocal || '-'); })(),
             'Hotel Makkah': p.hotelMakkah || p.hotel || '-',
             'Hotel Madinah': p.hotelMadinah || '-',
-            'Tgl. Keberangkatan': formatIndoDate(p.departureDate),
-            'Tgl. Kepulangan': formatIndoDate(p.returnDate),
+            'Tgl. Keberangkatan': formatDateIndo(p.departureDate),
+            'Tgl. Kepulangan': formatDateIndo(p.returnDate),
+            'Kerudung Merah': getKerudungStatus(p.id, 'Kerudung Merah'),
+            'Kerudung Putih': getKerudungStatus(p.id, 'Kerudung Putih'),
           })),
         },
       ];
@@ -913,7 +966,7 @@ export default function Pilgrims() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <Card
           onClick={() => {
             setActiveTab('all');
@@ -945,41 +998,6 @@ export default function Pilgrims() {
             <div className="flex items-center gap-1.5 text-xs font-medium text-[#782820]">
               <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
               <span>Database Jamaah Aktif</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card
-          onClick={() => {
-            setActiveTab('elderly');
-            setCurrentPage(1);
-          }}
-          className={`rounded-2xl border bg-white shadow-2xs cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm active:scale-[0.98] ${
-            activeTab === 'elderly'
-              ? 'border-amber-600 ring-2 ring-amber-600/20 bg-amber-50/20'
-              : 'border-gray-200/80 hover:border-gray-300'
-          }`}
-        >
-          <CardContent className="p-5 flex flex-col justify-between h-full gap-3">
-            <div className="flex justify-between items-start">
-              <div className="space-y-1">
-                <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-                  JAMAAH LANSIA (≥60 THN)
-                </p>
-
-                <p className="text-2xl sm:text-[26px] font-bold tracking-tight text-[#2d0a0a]">
-                  {totalElderly} Jamaah
-                </p>
-              </div>
-
-              <div className="w-10 h-10 rounded-full bg-[#fdf6e7] text-[#c27803] flex items-center justify-center shrink-0 shadow-2xs">
-                <UserCheck className="w-5 h-5" />
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1.5 text-xs font-medium text-[#b45309]">
-              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-              <span>Pendampingan Prioritas</span>
             </div>
           </CardContent>
         </Card>
@@ -1266,7 +1284,7 @@ export default function Pilgrims() {
                       key={d}
                       value={d}
                     >
-                      {formatIndoDate(d)}
+                      {formatDateIndo(d)}
                     </option>
                   )
                 )}

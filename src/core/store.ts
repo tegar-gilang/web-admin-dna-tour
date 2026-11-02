@@ -53,6 +53,7 @@ export type Pilgrim = {
 
   // Dokumen & Administrasi
   registrationDate?: string;
+  createdAt?: string;
   departureDate?: string;
   packageId?: string | null;
   umrahPackage?: string;

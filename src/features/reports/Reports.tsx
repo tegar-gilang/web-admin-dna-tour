@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useStore } from '@/core/store';
 import { exportToExcel, exportMasterWorkbookToExcel } from '@/lib/export';
+import { formatJamaahId, formatDateIndo } from '@/lib/utils';
 import { toast } from '@/lib/toast';
 
 export default function Reports() {
@@ -248,8 +249,8 @@ export default function Reports() {
           sheetName: 'Data Pendaftaran',
           title: 'Master Data Pendaftaran Jamaah Umrah - DNA Tour',
           data: filteredPilgrims.map(p => ({
-            'ID Jamaah': p.id,
-            'Tanggal Daftar': p.registrationDate || '-',
+            'ID Jamaah': formatJamaahId({ pilgrimId: p.pilgrimId }),
+            'Tanggal Daftar': formatDateIndo(p.registrationDate),
             'Nama Lengkap': p.name,
             'No. HP': p.phone,
             'Paket Umrah': p.umrahPackage || '-',
@@ -265,7 +266,7 @@ export default function Reports() {
           sheetName: 'Data Jamaah',
           title: 'Master Data Jamaah Umrah & Administrasi - DNA Tour',
           data: filteredPilgrims.map(p => ({
-            'ID Jamaah': p.id,
+            'ID Jamaah': formatJamaahId({ pilgrimId: p.pilgrimId }),
             'Nama Lengkap': p.name,
             'No. Paspor': p.passport,
             'No. Visa': p.visaNumber || '-',
@@ -274,7 +275,7 @@ export default function Reports() {
             'Usia': p.age,
             'No. HP': p.phone,
             'Kontak Darurat': p.emergencyContact || '-',
-            'Tgl. Keberangkatan': p.departureDate || '-',
+            'Tgl. Keberangkatan': formatDateIndo(p.departureDate),
             'Paket Umrah': p.umrahPackage || '-',
             'Kloter': p.group,
             'Tour Leader': p.tourLeader || '-',
@@ -415,8 +416,8 @@ export default function Reports() {
     try {
       if (id === 'pendaftaran') {
         const data = filteredPilgrims.map(p => ({
-          'ID Jamaah': p.id,
-          'Tanggal Daftar': p.registrationDate || '-',
+          'ID Jamaah': formatJamaahId({ pilgrimId: p.pilgrimId }),
+          'Tanggal Daftar': formatDateIndo(p.registrationDate),
           'Nama Lengkap': p.name,
           'No. HP': p.phone,
           'Paket Umrah': p.umrahPackage || '-',
@@ -432,7 +433,7 @@ export default function Reports() {
       }
       else if (id === 'jamaah') {
         const data = filteredPilgrims.map(p => ({
-          'ID Jamaah': p.id,
+          'ID Jamaah': formatJamaahId({ pilgrimId: p.pilgrimId }),
           'Nama Lengkap': p.name,
           'No. Paspor': p.passport,
           'No. Visa': p.visaNumber || '-',
@@ -441,7 +442,7 @@ export default function Reports() {
           'Usia': p.age,
           'No. HP': p.phone,
           'Kontak Darurat': p.emergencyContact || '-',
-          'Tgl. Keberangkatan': p.departureDate || '-',
+          'Tgl. Keberangkatan': formatDateIndo(p.departureDate),
           'Paket Umrah': p.umrahPackage || '-',
           'Kloter': p.group,
           'Tour Leader': p.tourLeader || '-',

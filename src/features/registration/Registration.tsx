@@ -48,6 +48,7 @@ import { useStore, Pilgrim } from '@/core/store';
 import stockService, { Stock } from '@/core/services/stockService';
 import { Dialog, DialogContent } from '@/components/ui/Dialog';
 import { exportToExcel } from '@/lib/export';
+import { formatJamaahId, formatDateIndo } from '@/lib/utils';
 import { PaymentMethodOptions } from '@/components/ui/PaymentMethodOptions';
 
 export default function Registration() {
@@ -222,42 +223,6 @@ export default function Registration() {
   // ==========================================
   // HELPER
   // ==========================================
-
-  const formatIndoDate = (
-    dateStr?: string,
-    fallback: string = '-'
-  ) => {
-    if (!dateStr) return fallback;
-
-    try {
-      const d = new Date(dateStr);
-
-      if (isNaN(d.getTime())) {
-        return dateStr;
-      }
-
-      const months = [
-        'Januari',
-        'Februari',
-        'Maret',
-        'April',
-        'Mei',
-        'Juni',
-        'Juli',
-        'Agustus',
-        'September',
-        'Oktober',
-        'November',
-        'Desember'
-      ];
-
-      return `${d.getDate()} ${
-        months[d.getMonth()]
-      } ${d.getFullYear()}`;
-    } catch {
-      return dateStr;
-    }
-  };
 
   const isDocComplete = (
     p: Pilgrim
@@ -478,10 +443,10 @@ export default function Registration() {
             ? p.departureDate ===
                 filterDepartureDate ||
               (p.departureDate &&
-                formatIndoDate(
+                formatDateIndo(
                   p.departureDate
                 ) ===
-                  formatIndoDate(
+                  formatDateIndo(
                     filterDepartureDate
                   ))
             : true;
@@ -909,7 +874,7 @@ export default function Registration() {
           p.id,
 
         'ID Jamaah':
-          p.pilgrimId || '-',
+          formatJamaahId({ pilgrimId: p.pilgrimId }),
 
         'Form ID':
           p.formId || '-',
@@ -933,10 +898,10 @@ export default function Registration() {
           p.phone || '-',
 
         'Tgl. Registrasi':
-          p.registrationDate || '-',
+          formatDateIndo(p.registrationDate),
 
         'Tgl. Keberangkatan':
-          p.departureDate || '-',
+          formatDateIndo(p.departureDate),
 
         'Paket Umrah':
           p.umrahPackage || '-',
@@ -1580,7 +1545,7 @@ export default function Registration() {
                       key={d}
                       value={d}
                     >
-                      {formatIndoDate(d)}
+                      {formatDateIndo(d)}
                     </option>
                   )
                 )}
@@ -2235,7 +2200,7 @@ export default function Registration() {
                         </div>
 
                         <span className="font-bold text-gray-900 text-sm text-right">
-                          {formatIndoDate(
+                          {formatDateIndo(
                             activePilgrim?.registrationDate
                           )}
                         </span>
@@ -2250,7 +2215,7 @@ export default function Registration() {
                         </div>
 
                         <span className="font-bold text-gray-900 text-sm text-right">
-                          {formatIndoDate(
+                          {formatDateIndo(
                             activePilgrim?.departureDate
                           )}
                         </span>
@@ -2564,7 +2529,7 @@ export default function Registration() {
                         </div>
 
                         <span className="font-bold text-gray-900 text-sm text-right">
-                          {formatIndoDate(
+                          {formatDateIndo(
                             activePilgrim?.paymentDate ||
                               activePilgrim?.registrationDate
                           )}

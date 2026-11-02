@@ -25,6 +25,7 @@ export interface BackendRegistration {
   payments: any[];
   equipments: RegistrationEquipment[];
   pilgrim_id: string | null;
+  created_at?: string;
 }
 
 export interface RegistrationOption {
@@ -500,6 +501,9 @@ function mapBackendToPilgrim(
 
     pilgrimId:
       backend.pilgrim_id || '',
+
+    createdAt:
+      backend.created_at || undefined,
 
     phone:
       backend.phone,
