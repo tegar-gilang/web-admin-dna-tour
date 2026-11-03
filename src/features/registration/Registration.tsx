@@ -2607,7 +2607,7 @@ export default function Registration() {
                               e.target.value
                           })
                         }
-                        placeholder="Cth. REG-1001 / PL-88210"
+                        placeholder="Cth. JAMAAH001"
                         className={`h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base ${
                           formData.pilgrimId
                             ? 'font-bold text-gray-900'
@@ -2963,7 +2963,7 @@ export default function Registration() {
                         } focus:outline-none focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859] cursor-pointer`}
                       >
                         <option value="">
-                          -- Pilih Kloter / Group --
+                          -- Pilih Kloter --
                         </option>
 
                         {groups.map((g) => (

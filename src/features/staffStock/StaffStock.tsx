@@ -1188,7 +1188,7 @@ export default function StaffStock() {
                       <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
                         <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
                           <MapPin className="w-4 h-4 text-[#782820] shrink-0" />
-                          <span>Lokasi Penyimpanan / Gudang</span>
+                          <span>Lokasi Penyimpanan</span>
                         </div>
                         <span className="font-bold text-gray-900 text-sm text-right">
                           {activeItem?.location || 'Gudang Utama Jakarta'}
@@ -1208,7 +1208,7 @@ export default function StaffStock() {
                       <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
                         <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
                           <Info className="w-4 h-4 text-[#782820] shrink-0" />
-                          <span>Catatan Tambahan / Spesifikasi</span>
+                          <span>Catatan</span>
                         </div>
                         <span className="font-medium text-gray-700 text-xs sm:text-sm text-right max-w-[280px]">
                           {activeItem?.notes || 'Kualitas premium katun tebal & nyaman digunakan'}
@@ -1364,7 +1364,7 @@ export default function StaffStock() {
                   {/* CATATAN TAMBAHAN */}
                   <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
                     <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                      CATATAN / SPESIFIKASI
+                      CATATAN
                     </label>
                     <div className="sm:col-span-8">
                       <Input 

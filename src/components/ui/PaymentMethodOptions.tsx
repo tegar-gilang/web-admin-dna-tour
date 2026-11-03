@@ -10,7 +10,7 @@ export const PaymentMethodOptions: React.FC<PaymentMethodOptionsProps> = ({ incl
     {includePlaceholder && <option value="" className="text-gray-400 font-normal">Pilih Metode Pembayaran</option>}
     <optgroup label="Metode Non-Bank" className="text-gray-900 font-normal">
       <option value="cash">Tunai</option>
-      <option value="edc_qris">EDC / QRIS</option>
+      <option value="edc_qris">QRIS</option>
     </optgroup>
     <optgroup label="Bank Syariah" className="text-gray-900 font-normal">
       <option value="bsi_transfer">Transfer Bank BSI (Bank Syariah Indonesia)</option>

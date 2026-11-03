@@ -457,7 +457,7 @@ export default function Emergency() {
       'ID Laporan': e.id,
       'Nama Jamaah': e.jamaah?.full_name || 'Tidak Diketahui',
       'Kontak Jamaah': e.jamaah?.phone || '-',
-      'Kloter / Rombongan': e.kloter?.name || '-',
+      'Kloter': e.kloter?.name || '-',
       'Tipe Darurat': getTypeLabel(e.type),
       'Lokasi Terakhir': e.location_name || (e.latitude && e.longitude ? `${e.latitude}, ${e.longitude}` : '-'),
       'Waktu Pemicu': formatIndoTime(e.triggered_at),
@@ -733,7 +733,7 @@ export default function Emergency() {
           <CardContent className="p-5 flex flex-col justify-between h-full gap-3">
             <div className="flex justify-between items-start">
               <div className="space-y-1">
-                <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">TERTANGANI / SELESAI</p>
+                <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">TERTANGANI</p>
                 <p className="text-2xl sm:text-[26px] font-bold tracking-tight text-emerald-800">
                   {resolvedEmergencies.length} Selesai
                 </p>
@@ -744,7 +744,7 @@ export default function Emergency() {
             </div>
             <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-700">
               <Check className="w-3.5 h-3.5 shrink-0" />
-              <span>Insiden Selesai / False Alarm</span>
+              <span>Insiden Selesai</span>
             </div>
           </CardContent>
         </Card>
@@ -1483,7 +1483,7 @@ export default function Emergency() {
                     {currentItem.description && (
                       <div className="py-3 px-5">
                         <p className="text-gray-700 text-xs font-semibold uppercase tracking-wider mb-1">
-                          Catatan / Keterangan Kondisi:
+                          Catatan:
                         </p>
                         <p className="text-xs sm:text-sm text-gray-800 bg-gray-50 p-2.5 rounded-xl border border-gray-100">
                           {currentItem.description}
@@ -1513,7 +1513,7 @@ export default function Emergency() {
                     <div className="flex items-center justify-between py-3 px-5">
                       <div className="flex items-center gap-3 text-gray-700 text-xs sm:text-sm font-medium">
                         <Users className="w-4 h-4 text-[#782820] shrink-0" />
-                        <span>Kloter / Rombongan</span>
+                        <span>Kloter</span>
                       </div>
                       <span className="font-bold text-gray-900 text-xs sm:text-sm text-right">
                         {kloterName}
@@ -1523,7 +1523,7 @@ export default function Emergency() {
                     <div className="flex items-center justify-between py-3 px-5">
                       <div className="flex items-center gap-3 text-gray-700 text-xs sm:text-sm font-medium">
                         <Phone className="w-4 h-4 text-[#782820] shrink-0" />
-                        <span>Nomor Kontak / WhatsApp</span>
+                        <span>No Telpon</span>
                       </div>
                       <span className="font-bold text-blue-700 text-xs sm:text-sm text-right font-mono">
                         {pilgrimPhone || '-'}
@@ -1767,16 +1767,16 @@ export default function Emergency() {
                 onChange={(e) => setCreateFormData({ ...createFormData, type: e.target.value as any })}
                 required
               >
-                <option value="health">Darurat Medis / Sakit (health)</option>
-                <option value="lost">Jamaah Terpisah / Tersesat (lost)</option>
+                <option value="health">Darurat Medis(health)</option>
+                <option value="lost">Jamaah Terpisah atau Tersesat(lost)</option>
                 <option value="accident">Kecelakaan (accident)</option>
-                <option value="critical">Darurat Kritis / Evakuasi (critical)</option>
+                <option value="critical">Evakuasi (critical)</option>
               </select>
             </div>
 
             {/* Location Name */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Nama Lokasi / Landmark Kejadian</label>
+              <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Lokasi Kejadian</label>
               <Input 
                 placeholder="Contoh: Gate 1 Bab Malik Abdulaziz, Masjidil Haram"
                 value={createFormData.location_name}

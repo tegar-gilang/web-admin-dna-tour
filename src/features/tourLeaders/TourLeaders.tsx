@@ -220,7 +220,7 @@ export default function TourLeaders() {
       phone: '',
       status: 'Active',
       experience: '5 Tahun',
-      performance: 'Sangat Baik / Berpengalaman',
+      performance: 'Berpengalaman',
       group: 'Belum Ditugaskan'
     });
     setSelectedKloterToAssign('');
@@ -609,7 +609,7 @@ export default function TourLeaders() {
                   : 'font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50/80'
               }`}
             >
-              <span>Siaga / Istirahat</span>
+              <span>Status</span>
               <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold transition-all duration-200 ${
                 activeTab === 'resting' 
                   ? 'bg-amber-100 text-amber-800 scale-105' 
@@ -724,7 +724,7 @@ export default function TourLeaders() {
               >
                 <option value="">Semua Status</option>
                 <option value="ACTIVE">Aktif Membimbing</option>
-                <option value="RESTING">Istirahat / Off</option>
+                <option value="RESTING">Istirahat</option>
                 <option value="STANDBY">Siaga (Standby)</option>
               </select>
             </div>
@@ -1080,7 +1080,7 @@ export default function TourLeaders() {
                     <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
                       <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
                         <Phone className="w-4 h-4 text-[#782820] shrink-0" />
-                        <span>Nomor WhatsApp / HP</span>
+                        <span>No Telpon</span>
                       </div>
                       <span className="font-bold text-gray-900 text-sm text-right">
                         {activeLeader?.phone || '+62 812 3456 7890'}
@@ -1328,7 +1328,7 @@ export default function TourLeaders() {
                   {/* CATATAN PERFORMA / REVIEW */}
                   <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
                     <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                      CATATAN PERFORMA / REVIEW
+                      CATATAN PERFORMA
                     </label>
                     <div className="sm:col-span-8">
                       <Input 
