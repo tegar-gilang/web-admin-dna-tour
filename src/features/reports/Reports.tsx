@@ -1,15 +1,18 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
-import { 
-  Download, Filter, Calendar, Users, Wallet, Building2, 
-  UserCheck, Package, ShieldAlert, Sparkles, Search, 
+import {
+  Download, Filter, Calendar, Users, Wallet, Building2,
+  UserCheck, Package, ShieldAlert, Sparkles, Search,
   Layers, RotateCcw, Radio, FileSpreadsheet, ChevronRight,
   FolderArchive, CheckCircle2, ClipboardList
 } from 'lucide-react';
-import { useStore } from '@/core/store';
+import { useStore, FinanceTransaction } from '@/core/store';
+import { financeService } from '@/core/services/financeService';
+import { otherIncomeService } from '@/core/services/otherIncomeService';
+import { expenseService } from '@/core/services/expenseService';
 import { exportToExcel, exportMasterWorkbookToExcel } from '@/lib/export';
 import { formatJamaahId, formatDateIndo } from '@/lib/utils';
 import { toast } from '@/lib/toast';
@@ -24,26 +27,100 @@ export default function Reports() {
   const [selectedGroup, setSelectedGroup] = useState<string>('ALL');
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  
+
   const [isExportingMaster, setIsExportingMaster] = useState(false);
   const [activeExportId, setActiveExportId] = useState<string | null>(null);
 
   // ==========================================
   // FITUR: DATA SOURCE & GLOBAL STATE
   // ==========================================
-  const { 
-    pilgrims, 
-    groups, 
-    tourLeaders, 
-    mutawifs, 
-    schedules, 
-    emergencies, 
-    rooms, 
-    staffStocks, 
+  const {
+    pilgrims,
+    groups,
+    tourLeaders,
+    mutawifs,
+    schedules,
+    emergencies,
+    rooms,
+    staffStocks,
     financeTransactions,
     financeExpenses,
-    broadcasts
+    broadcasts,
+    setFinanceTransactions,
+    setFinanceExpenses,
   } = useStore();
+
+  const [isLoadingFinance, setIsLoadingFinance] = useState(false);
+  const [financeError, setFinanceError] = useState<string | null>(null);
+  const isHydratedRef = useRef(false);
+
+  // Hydrate finance data if not already populated
+  useEffect(() => {
+    let isMounted = true;
+
+    const hydrateFinanceData = async () => {
+      // If store already has data or hydration was attempted, skip
+      if (isHydratedRef.current) return;
+      if (financeTransactions.length > 0 && financeExpenses.length > 0) {
+        isHydratedRef.current = true;
+        return;
+      }
+
+      isHydratedRef.current = true;
+      setIsLoadingFinance(true);
+      setFinanceError(null);
+
+      try {
+        const fetchTasks: Promise<any>[] = [];
+
+        if (financeTransactions.length === 0) {
+          fetchTasks.push(
+            (async () => {
+              const payments = await financeService.getPayments();
+              let otherIncomes: FinanceTransaction[] = [];
+              try {
+                otherIncomes = await otherIncomeService.getOtherIncomes();
+              } catch (e) {
+                console.error('Failed to fetch other incomes in Reports:', e);
+              }
+              if (isMounted) {
+                setFinanceTransactions([...payments, ...otherIncomes]);
+              }
+            })()
+          );
+        }
+
+        if (financeExpenses.length === 0) {
+          fetchTasks.push(
+            (async () => {
+              const expenses = await expenseService.getExpenses();
+              if (isMounted) {
+                setFinanceExpenses(expenses);
+              }
+            })()
+          );
+        }
+
+        await Promise.all(fetchTasks);
+      } catch (err: any) {
+        console.error('Failed to hydrate finance data in Reports:', err);
+        if (isMounted) {
+          setFinanceError(err.message || 'Gagal memuat data transaksi keuangan.');
+          toast('Gagal memuat data transaksi keuangan laporan.', 'error');
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingFinance(false);
+        }
+      }
+    };
+
+    hydrateFinanceData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [financeTransactions.length, financeExpenses.length, setFinanceTransactions, setFinanceExpenses]);
 
   const todayStr = new Date().toISOString().split('T')[0];
 
@@ -51,7 +128,7 @@ export default function Reports() {
   // FITUR: DATA FILTERING & PROCESSING
   // Memproses data berdasarkan filter yang aktif
   // ==========================================
-  
+
   // Unique groups dropdown list
   const availableGroups = useMemo(() => {
     const list = groups.map(g => g.name || g.kloter).filter(Boolean);
@@ -61,7 +138,7 @@ export default function Reports() {
   // Synchronized Filtered Data Sets
   const filteredBroadcasts = useMemo(() => {
     return broadcasts.filter(b => {
-      const matchesSearch = !searchQuery.trim() || 
+      const matchesSearch = !searchQuery.trim() ||
         b.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         b.message.toLowerCase().includes(searchQuery.toLowerCase()) ||
         b.target.toLowerCase().includes(searchQuery.toLowerCase());
@@ -72,11 +149,11 @@ export default function Reports() {
   const filteredPilgrims = useMemo(() => {
     return pilgrims.filter(p => {
       const matchesGroup = selectedGroup === 'ALL' || p.group === selectedGroup || p.group.includes(selectedGroup);
-      const matchesStatus = selectedStatus === 'ALL' || 
+      const matchesStatus = selectedStatus === 'ALL' ||
         (selectedStatus === 'LUNAS' && (p.paymentOption === 'Bayar Lunas' || p.paymentOption === 'DP')) ||
         (selectedStatus === 'BELUM_LUNAS' && p.paymentOption === 'Belum Bayar') ||
         (selectedStatus === 'BERHASIL' && p.paymentOption === 'Bayar Lunas');
-      const matchesSearch = !searchQuery.trim() || 
+      const matchesSearch = !searchQuery.trim() ||
         p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.passport.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.phone.includes(searchQuery) ||
@@ -89,7 +166,7 @@ export default function Reports() {
     return groups.filter(g => {
       const matchesGroup = selectedGroup === 'ALL' || g.name === selectedGroup || g.kloter === selectedGroup;
       const matchesStatus = selectedStatus === 'ALL' || g.status.toLowerCase().includes(selectedStatus.toLowerCase());
-      const matchesSearch = !searchQuery.trim() || 
+      const matchesSearch = !searchQuery.trim() ||
         g.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         g.kloter.toLowerCase().includes(searchQuery.toLowerCase()) ||
         g.tourLeader.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -98,13 +175,19 @@ export default function Reports() {
     });
   }, [groups, selectedGroup, selectedStatus, searchQuery]);
 
-  const filteredFinance = useMemo(() => {
+  // ==========================================
+  // FITUR: DATA FILTERING & PROCESSING (FINANCE)
+  // Memproses data pemasukan dan pengeluaran secara terpisah lalu menggabungkannya
+  // ==========================================
+
+  // 1. Pemasukan (financeTransactions)
+  const filteredIncomes = useMemo(() => {
     return financeTransactions.filter(t => {
       const matchesDate = (!startDate || t.date >= startDate) && (!endDate || t.date <= endDate);
       const pilgrim = pilgrims.find(p => p.id === t.pilgrimId || p.name.trim().toLowerCase() === t.pilgrimName.trim().toLowerCase());
       const pilgrimGroup = pilgrim ? pilgrim.group : '';
       const matchesGroup = selectedGroup === 'ALL' || (pilgrimGroup && pilgrimGroup.includes(selectedGroup));
-      const matchesStatus = selectedStatus === 'ALL' || 
+      const matchesStatus = selectedStatus === 'ALL' ||
         (selectedStatus === 'BERHASIL' && t.status === 'Berhasil') ||
         (selectedStatus === 'LUNAS' && t.status === 'Berhasil') ||
         (selectedStatus === 'PENDING' && t.status === 'Pending') ||
@@ -117,6 +200,39 @@ export default function Reports() {
       return matchesDate && matchesGroup && matchesStatus && matchesSearch;
     });
   }, [financeTransactions, startDate, endDate, pilgrims, selectedGroup, selectedStatus, searchQuery]);
+
+  // 2. Pengeluaran (financeExpenses)
+  const filteredExpenses = useMemo(() => {
+    // Pengeluaran tidak masuk saat filter status BELUM_LUNAS atau BATAL
+    const matchesStatus = selectedStatus === 'ALL' || selectedStatus === 'LUNAS' || selectedStatus === 'BERHASIL';
+    if (!matchesStatus) {
+      return [];
+    }
+
+    return financeExpenses.filter(t => {
+      const matchesDate = (!startDate || t.date >= startDate) && (!endDate || t.date <= endDate);
+      const matchesSearch = !searchQuery.trim() ||
+        t.pilgrimName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        t.category?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        t.type?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (t.referenceNo && t.referenceNo.toLowerCase().includes(searchQuery.toLowerCase()));
+      // Pengeluaran tetap ditampilkan seluruhnya terlepas dari filter Kloter
+      return matchesDate && matchesSearch;
+    });
+  }, [financeExpenses, startDate, endDate, selectedStatus, searchQuery]);
+
+  // 3. Dataset Gabungan (Pemasukan + Pengeluaran)
+  const combinedFinanceTransactions = useMemo(() => {
+    const combined = [...filteredIncomes, ...filteredExpenses];
+    return combined.sort((a, b) => {
+      const aTime = (a as any).created_at ? new Date((a as any).created_at).getTime() : new Date(a.date).getTime();
+      const bTime = (b as any).created_at ? new Date((b as any).created_at).getTime() : new Date(b.date).getTime();
+      return bTime - aTime;
+    });
+  }, [filteredIncomes, filteredExpenses]);
+
+  // Backward compatibility alias for any existing reference
+  const filteredFinance = combinedFinanceTransactions;
 
   const filteredRooms = useMemo(() => {
     return rooms.filter(r => {
@@ -182,27 +298,19 @@ export default function Reports() {
 
   // ==========================================
   // FITUR: FINANCIAL CALCULATIONS
-  // Menghitung total pemasukan dan pengeluaran
+  // Menghitung total pemasukan dan pengeluaran dari filtered datasets
   // ==========================================
   // Financial calculations on filtered dataset
   const totalIncome = useMemo(() => {
-    return filteredFinance
+    return filteredIncomes
       .filter(t => t.type.startsWith('Pemasukan') && t.status === 'Berhasil')
       .reduce((sum, t) => sum + t.amount, 0);
-  }, [filteredFinance]);
+  }, [filteredIncomes]);
 
   const totalExpense = useMemo(() => {
-    const filteredExpenses = financeExpenses.filter(t => {
-      const matchesDate = (!startDate || t.date >= startDate) && (!endDate || t.date <= endDate);
-      const matchesSearch = !searchQuery.trim()
-        || t.pilgrimName?.toLowerCase().includes(searchQuery.toLowerCase())
-        || t.category?.toLowerCase().includes(searchQuery.toLowerCase())
-        || t.type?.toLowerCase().includes(searchQuery.toLowerCase())
-        || (t.referenceNo && t.referenceNo.toLowerCase().includes(searchQuery.toLowerCase()));
-      return matchesDate && matchesSearch;
-    });
-    return filteredExpenses.reduce((sum, t) => sum + t.amount, 0);
-  }, [financeExpenses, startDate, endDate, searchQuery]);
+    return filteredExpenses
+      .reduce((sum, t) => sum + t.amount, 0);
+  }, [filteredExpenses]);
 
   const netBalance = totalIncome - totalExpense;
 
@@ -458,7 +566,7 @@ export default function Reports() {
         }));
         await exportToExcel(data, `Laporan_Data_Jamaah_${todayStr}`, 'LAPORAN DATA JAMAAH & REGISTRASI - DNA TOUR');
         toast("Laporan Data Jamaah berhasil diunduh!", "success");
-      } 
+      }
       else if (id === 'kloter') {
         const data = filteredGroups.map(g => ({
           'ID Kloter': g.id,
@@ -720,25 +828,25 @@ export default function Reports() {
         {/* Subtle decorative background pattern */}
         <div className="absolute top-0 right-0 -mt-16 -mr-16 w-80 h-80 bg-red-400/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 left-1/3 -mb-20 w-64 h-64 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
-        
+
         <div className="relative z-10 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
           <div className="space-y-3 max-w-2xl">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-red-100 text-xs font-semibold">
               <Sparkles className="w-3.5 h-3.5 text-amber-300" />
               <span>Pusat Laporan Terpadu DNA Tour</span>
             </div>
-            
+
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-white leading-tight">
               Pusat Laporan & Ekspor Data
             </h1>
-            
+
             <p className="text-sm sm:text-base text-red-100/90 leading-relaxed font-normal">
               Unduh rekapitulasi data per modul atau ekspor seluruh 9 modul data operasional ke dalam satu Master Workbook Excel yang terstruktur rapi.
             </p>
           </div>
 
           <div className="w-full lg:w-auto shrink-0">
-            <Button 
+            <Button
               onClick={handleExportMasterAllInOne}
               disabled={isExportingMaster}
               className="w-full lg:w-auto h-auto py-4 px-7 rounded-2xl bg-white hover:bg-red-50 text-[#740A03] font-bold text-sm sm:text-base shadow-xl hover:shadow-2xl transition-all flex items-center justify-center gap-3 cursor-pointer border border-white/30 group"
@@ -807,18 +915,18 @@ export default function Reports() {
               <Calendar className="w-3.5 h-3.5 text-[#740A03]" /> Rentang Tanggal
             </label>
             <div className="flex items-center gap-2 bg-gray-50/80 px-3 py-1.5 h-10 rounded-xl border border-gray-200 focus-within:border-[#740A03] focus-within:bg-white">
-              <input 
-                type="date" 
-                value={startDate} 
+              <input
+                type="date"
+                value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="bg-transparent text-xs text-gray-700 font-medium focus:outline-none w-full appearance-none" 
+                className="bg-transparent text-xs text-gray-700 font-medium focus:outline-none w-full appearance-none"
               />
               <span className="text-gray-400 font-medium hidden sm:inline text-center shrink-0">-</span>
-              <input 
-                type="date" 
-                value={endDate} 
+              <input
+                type="date"
+                value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="bg-transparent text-xs text-gray-700 font-medium focus:outline-none w-full appearance-none" 
+                className="bg-transparent text-xs text-gray-700 font-medium focus:outline-none w-full appearance-none"
               />
             </div>
           </div>
@@ -859,8 +967,8 @@ export default function Reports() {
 
           {/* Action: Reset Filter Button */}
           <div className="space-y-1.5 flex flex-col justify-end">
-            <Button 
-              size="sm" 
+            <Button
+              size="sm"
               variant="outline"
               onClick={handleResetFilters}
               className="h-10 text-xs text-gray-700 border-gray-200 hover:bg-red-50 hover:text-[#740A03] hover:border-red-200 rounded-xl flex items-center justify-center gap-1.5 font-bold w-full cursor-pointer shadow-2xs transition-colors"
@@ -894,10 +1002,10 @@ export default function Reports() {
         ) : (
           visibleCategories.map((category) => {
             const CategoryIcon = category.icon;
-            
+
             return (
-              <div 
-                key={category.key} 
+              <div
+                key={category.key}
                 className="bg-white rounded-[2rem] border border-gray-100 p-6 sm:p-8 shadow-sm hover:shadow-md transition-all duration-300 space-y-6"
               >
                 {/* Category Container Header */}
@@ -931,13 +1039,13 @@ export default function Reports() {
                     const isCurrentExporting = activeExportId === card.id;
 
                     return (
-                      <Card 
-                        key={card.id} 
+                      <Card
+                        key={card.id}
                         className="bg-white border border-[#740A03] hover:border-[#740A03] rounded-2xl overflow-hidden flex flex-col group transition-all duration-300 hover:shadow-lg hover:-translate-y-1 relative"
                       >
                         {/* Hover accent top line */}
                         <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#740A03] to-red-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                        
+
                         <CardContent className="p-0 flex-1 flex flex-col justify-between pt-1">
                           <div className="p-5 sm:p-6 space-y-4">
                             {/* Card Top Row */}

@@ -21,6 +21,7 @@ import { jamaahService } from '../../core/services/jamaahService';
 import { kloterService } from '../../core/services/kloterService';
 import { roomService } from '../../core/services/roomService';
 import { tourLeaderService, getKloterTourLeaders } from '../../core/services/tourLeaderService';
+import { mutawifService } from '../../core/services/mutawifService';
 
 export default function GroupDetail() {
 
@@ -36,6 +37,7 @@ export default function GroupDetail() {
     groups,
     setGroups,
     setTourLeaders,
+    setMutawifs,
     updateGroup, 
     pilgrims,
     setPilgrims,
@@ -123,12 +125,16 @@ export default function GroupDetail() {
       try {
         setIsLoadingGroup(true);
 
-        const [klotersData, tourLeadersData] = await Promise.all([
+        const [klotersData, tourLeadersData, mutawifsData] = await Promise.all([
           kloterService.getKloters(),
           tourLeaderService.getTourLeaders(),
+          mutawifService.getMutawifs().catch(() => []),
         ]);
         setGroups(klotersData);
         setTourLeaders(tourLeadersData);
+        if (mutawifsData && mutawifsData.length > 0) {
+          setMutawifs(mutawifsData);
+        }
       } catch (error) {
         const message =
           error instanceof Error
@@ -142,7 +148,7 @@ export default function GroupDetail() {
     };
 
     loadKlotersAndTourLeaders();
-  }, [setGroups, setTourLeaders]);
+  }, [setGroups, setTourLeaders, setMutawifs]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -532,10 +538,110 @@ if (isLoadingGroup) {
     toast('Data kloter berhasil diunduh ke Excel!', 'success');
   };
 
-  const handleSaveEditGroup = () => {
-    updateGroup(group.id, editFormData);
-    setIsEditModalOpen(false);
-    toast('Informasi kloter berhasil diperbarui!', 'success');
+  const handleSaveEditGroup = async () => {
+    try {
+      const targetKloterId = group.backendId || group.id;
+
+      // Resolve Tour Leader name & ID
+      const selectedTL = tourLeaders.find(
+        (t) => (t.backendId || t.id) === editFormData.tourLeader || t.id === editFormData.tourLeader
+      );
+      const tlName = selectedTL ? selectedTL.name : (editFormData.tourLeader?.trim() || null);
+      const tlId = selectedTL ? (selectedTL.backendId || selectedTL.id) : null;
+
+      // Resolve Muthawwif name & ID
+      const selectedMW = mutawifs.find(
+        (m) => (m.backendId || m.id) === editFormData.mutawif || m.id === editFormData.mutawif
+      );
+      const mwName = selectedMW ? selectedMW.name : (editFormData.mutawif?.trim() || null);
+      const mwId = selectedMW ? (selectedMW.backendId || selectedMW.id) : null;
+
+      let updatedGroup: Group | null = null;
+      if (group.backendId) {
+        updatedGroup = await kloterService.updateKloter(group.backendId, {
+          name: editFormData.name || group.name,
+          flight_code: editFormData.kloter || null,
+          tour_leader: tlName,
+          mutawif_local: mwName,
+        });
+
+        // Sync Tour Leader pivot
+        const currentAssignedTLs = getKloterTourLeaders(targetKloterId, tourLeaders);
+        for (const prevTL of currentAssignedTLs) {
+          const prevId = prevTL.backendId || prevTL.id;
+          if (prevId !== tlId) {
+            try {
+              await tourLeaderService.unassignKloter(prevId, targetKloterId);
+            } catch (err) {
+              console.warn("Failed to unassign previous TL:", err);
+            }
+          }
+        }
+        if (tlId) {
+          const isAlreadyAssigned = currentAssignedTLs.some(
+            (t) => (t.backendId || t.id) === tlId
+          );
+          if (!isAlreadyAssigned) {
+            try {
+              await tourLeaderService.assignKloter(tlId, targetKloterId);
+            } catch (err) {
+              console.warn("Failed to assign TL:", err);
+            }
+          }
+        }
+
+        // Sync Muthawwif pivot
+        const currentAssignedMWs = (group.mutawifs && group.mutawifs.length > 0)
+          ? group.mutawifs
+          : mutawifs.filter((m) => (m.kloters || []).some((k) => k.id === targetKloterId));
+
+        for (const prevMW of currentAssignedMWs) {
+          const prevId = prevMW.backendId || prevMW.id;
+          if (prevId !== mwId) {
+            try {
+              await mutawifService.unassignMutawifFromKloter(prevId, targetKloterId);
+            } catch (err) {
+              console.warn("Failed to unassign previous Muthawwif:", err);
+            }
+          }
+        }
+        if (mwId) {
+          const isAlreadyAssigned = currentAssignedMWs.some(
+            (m) => (m.backendId || m.id) === mwId
+          );
+          if (!isAlreadyAssigned) {
+            try {
+              await mutawifService.assignMutawifToKloter(mwId, targetKloterId);
+            } catch (err) {
+              console.warn("Failed to assign Muthawwif:", err);
+            }
+          }
+        }
+      }
+
+      // Re-fetch all data to ensure fresh state
+      const [refreshedKloters, refreshedTLs, refreshedMWs] = await Promise.all([
+        kloterService.getKloters().catch(() => null),
+        tourLeaderService.getTourLeaders().catch(() => null),
+        mutawifService.getMutawifs().catch(() => null),
+      ]);
+
+      if (refreshedKloters) setGroups(refreshedKloters);
+      else if (updatedGroup) updateGroup(group.id, updatedGroup);
+      else updateGroup(group.id, editFormData);
+
+      if (refreshedTLs) setTourLeaders(refreshedTLs);
+      if (refreshedMWs) setMutawifs(refreshedMWs);
+
+      setIsEditModalOpen(false);
+      toast('Informasi kloter berhasil diperbarui!', 'success');
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Gagal memperbarui kloter.';
+      toast(message, 'error');
+    }
   };
 
   const filteredGroupPilgrims = groupPilgrims.filter(p => {
@@ -602,7 +708,22 @@ if (isLoadingGroup) {
             variant="outline"
             size="sm"
             onClick={() => {
-              setEditFormData(group);
+              const currentId = group.backendId || group.id;
+              const assignedTLs = getKloterTourLeaders(currentId, tourLeaders);
+              const initialTL = assignedTLs.length > 0
+                ? (assignedTLs[0].backendId || assignedTLs[0].id)
+                : (group.tourLeader && group.tourLeader !== '-' ? group.tourLeader : '');
+
+              const assignedMW = (group.mutawifs && group.mutawifs.length > 0)
+                ? (group.mutawifs[0].backendId || group.mutawifs[0].id)
+                : (mutawifs.find(m => (m.kloters || []).some(k => k.id === currentId))?.backendId ||
+                   (group.mutawif && group.mutawif !== '-' ? group.mutawif : ''));
+
+              setEditFormData({
+                ...group,
+                tourLeader: initialTL,
+                mutawif: assignedMW,
+              });
               setIsEditModalOpen(true);
             }}
             className="text-xs h-9.5 font-semibold text-gray-700 bg-white border-gray-200 hover:bg-gray-50 px-3.5 rounded-xl shadow-2xs cursor-pointer"
@@ -1653,19 +1774,59 @@ if (isLoadingGroup) {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="font-semibold text-gray-700 mb-1.5 block">Tour Leader</label>
-                <Input 
-                  value={editFormData.tourLeader || ''} 
-                  onChange={(e) => setEditFormData({...editFormData, tourLeader: e.target.value})} 
-                  className="h-9.5 text-xs sm:text-sm rounded-xl"
-                />
+                <select
+                  value={editFormData.tourLeader || ''}
+                  onChange={(e) => setEditFormData({...editFormData, tourLeader: e.target.value})}
+                  className="h-9.5 w-full text-xs sm:text-sm rounded-xl border border-gray-300 bg-white px-3 font-semibold text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#740A03] focus:border-[#740A03] cursor-pointer"
+                >
+                  <option value="">-- Pilih Tour Leader --</option>
+                  {editFormData.tourLeader && !tourLeaders.some(t => (t.backendId || t.id) === editFormData.tourLeader || t.id === editFormData.tourLeader) && (
+                    <option value={editFormData.tourLeader}>
+                      {editFormData.tourLeader} (Teks Tersimpan)
+                    </option>
+                  )}
+                  {tourLeaders.map((tl) => {
+                    const tlVal = tl.backendId || tl.id;
+                    const isAssigned = (tl.kloters || []).length > 0;
+                    const currentKloterId = group.backendId || group.id;
+                    const isAssignedToThis = currentKloterId ? (tl.kloters || []).some(k => k.id === currentKloterId) : false;
+                    const statusBadge = isAssignedToThis ? ' (Saat Ini)' : isAssigned ? ' (Tugas Kloter Lain)' : ` (${tl.status})`;
+
+                    return (
+                      <option key={tl.id} value={tlVal}>
+                        {tl.name}{statusBadge}
+                      </option>
+                    );
+                  })}
+                </select>
               </div>
               <div>
                 <label className="font-semibold text-gray-700 mb-1.5 block">Muthawwif</label>
-                <Input 
-                  value={editFormData.mutawif || ''} 
-                  onChange={(e) => setEditFormData({...editFormData, mutawif: e.target.value})} 
-                  className="h-9.5 text-xs sm:text-sm rounded-xl"
-                />
+                <select
+                  value={editFormData.mutawif || ''}
+                  onChange={(e) => setEditFormData({...editFormData, mutawif: e.target.value})}
+                  className="h-9.5 w-full text-xs sm:text-sm rounded-xl border border-gray-300 bg-white px-3 font-semibold text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#740A03] focus:border-[#740A03] cursor-pointer"
+                >
+                  <option value="">-- Pilih Muthawwif --</option>
+                  {editFormData.mutawif && !mutawifs.some(m => (m.backendId || m.id) === editFormData.mutawif || m.id === editFormData.mutawif) && (
+                    <option value={editFormData.mutawif}>
+                      {editFormData.mutawif} (Teks Tersimpan)
+                    </option>
+                  )}
+                  {mutawifs.map((mw) => {
+                    const mwVal = mw.backendId || mw.id;
+                    const isAssigned = (mw.kloters || []).length > 0;
+                    const currentKloterId = group.backendId || group.id;
+                    const isAssignedToThis = currentKloterId ? (mw.kloters || []).some(k => k.id === currentKloterId) : false;
+                    const statusBadge = isAssignedToThis ? ' (Saat Ini)' : isAssigned ? ' (Tugas Kloter Lain)' : ` (${mw.status})`;
+
+                    return (
+                      <option key={mw.id} value={mwVal}>
+                        {mw.name}{statusBadge}
+                      </option>
+                    );
+                  })}
+                </select>
               </div>
             </div>
           </div>
