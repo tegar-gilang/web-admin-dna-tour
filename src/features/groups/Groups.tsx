@@ -19,6 +19,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { exportToExcel } from '@/lib/export';
 import { kloterService } from '../../core/services/kloterService';
 import { tourLeaderService, getKloterTourLeaders } from '../../core/services/tourLeaderService';
+import { mutawifService } from '../../core/services/mutawifService';
 
 export default function Groups() {
 
@@ -32,6 +33,7 @@ export default function Groups() {
     groups,
     setGroups,
     setTourLeaders,
+    setMutawifs,
     addGroup, 
     updateGroup, 
     deleteGroups, 
@@ -70,13 +72,17 @@ export default function Groups() {
         setIsLoadingKloters(true);
         setKloterError(null);
 
-        const [klotersData, tourLeadersData] = await Promise.all([
+        const [klotersData, tourLeadersData, mutawifsData] = await Promise.all([
           kloterService.getKloters(),
           tourLeaderService.getTourLeaders(),
+          mutawifService.getMutawifs().catch(() => []),
         ]);
 
         setGroups(klotersData);
         setTourLeaders(tourLeadersData);
+        if (mutawifsData && mutawifsData.length > 0) {
+          setMutawifs(mutawifsData);
+        }
       } catch (error) {
         const message =
           error instanceof Error
@@ -90,7 +96,7 @@ export default function Groups() {
     };
 
     loadKlotersAndTourLeaders();
-  }, [setGroups, setTourLeaders]);
+  }, [setGroups, setTourLeaders, setMutawifs]);
 
   // Stats Calculations
   const totalGroups = groups.length;
@@ -190,8 +196,8 @@ export default function Groups() {
       name: `Kloter ${groups.length + 1} Al-`,
       kloter: `KNO-0${groups.length + 1}`,
       status: 'Active',
-      tourLeader: tourLeaders[0]?.name || 'Ust. H. Muhammad Ridwan',
-      mutawif: mutawifs[0]?.name || 'Ust. Ibrahim Al-Madani',
+      tourLeader: '',
+      mutawif: '',
       pilgrims: 0
     });
     setIsFormModalOpen(true);
@@ -200,7 +206,22 @@ export default function Groups() {
   const openEditModal = (g: Group) => {
     setEditingGroup(g);
     setModalMode('edit');
-    setFormData({ ...g });
+    const targetId = g.backendId || g.id;
+    const assignedTLs = getKloterTourLeaders(targetId, tourLeaders);
+    const initialTL = assignedTLs.length > 0
+      ? (assignedTLs[0].backendId || assignedTLs[0].id)
+      : (g.tourLeader && g.tourLeader !== '-' ? g.tourLeader : '');
+
+    const assignedMW = (g.mutawifs && g.mutawifs.length > 0)
+      ? (g.mutawifs[0].backendId || g.mutawifs[0].id)
+      : (mutawifs.find(m => (m.kloters || []).some(k => k.id === targetId))?.backendId ||
+         (g.mutawif && g.mutawif !== '-' ? g.mutawif : ''));
+
+    setFormData({
+      ...g,
+      tourLeader: initialTL,
+      mutawif: assignedMW,
+    });
     setIsFormModalOpen(true);
   };
 
@@ -211,14 +232,32 @@ export default function Groups() {
     }
 
     try {
+      // Resolve Tour Leader name & ID
+      const selectedTL = tourLeaders.find(
+        (t) => (t.backendId || t.id) === formData.tourLeader || t.id === formData.tourLeader
+      );
+      const tlName = selectedTL ? selectedTL.name : (formData.tourLeader?.trim() || null);
+      const tlId = selectedTL ? (selectedTL.backendId || selectedTL.id) : null;
+
+      // Resolve Muthawwif name & ID
+      const selectedMW = mutawifs.find(
+        (m) => (m.backendId || m.id) === formData.mutawif || m.id === formData.mutawif
+      );
+      const mwName = selectedMW ? selectedMW.name : (formData.mutawif?.trim() || null);
+      const mwId = selectedMW ? (selectedMW.backendId || selectedMW.id) : null;
+
+      let savedKloter: Group;
+
       if (editingGroup) {
         if (!editingGroup.backendId) {
           toast("ID backend kloter tidak ditemukan.", "error");
           return;
         }
 
-        const updatedGroup = await kloterService.updateKloter(
-          editingGroup.backendId,
+        const targetKloterId = editingGroup.backendId;
+
+        savedKloter = await kloterService.updateKloter(
+          targetKloterId,
           {
             name: formData.name,
             code: formData.formId || null,
@@ -229,22 +268,67 @@ export default function Groups() {
                 : formData.status === 'Archived'
                 ? 'archived'
                 : 'draft',
-            tour_leader: formData.tourLeader || null,
-            mutawif_local: formData.mutawif || null,
+            tour_leader: tlName,
+            mutawif_local: mwName,
           }
         );
 
-        setGroups(
-          groups.map((group) =>
-            group.backendId === updatedGroup.backendId
-              ? updatedGroup
-              : group
-          )
-        );
+        // Synchronize Tour Leader pivot assignment
+        const currentAssignedTLs = getKloterTourLeaders(targetKloterId, tourLeaders);
+        for (const prevTL of currentAssignedTLs) {
+          const prevId = prevTL.backendId || prevTL.id;
+          if (prevId !== tlId) {
+            try {
+              await tourLeaderService.unassignKloter(prevId, targetKloterId);
+            } catch (err) {
+              console.warn("Failed to unassign previous TL:", err);
+            }
+          }
+        }
+        if (tlId) {
+          const isAlreadyAssigned = currentAssignedTLs.some(
+            (t) => (t.backendId || t.id) === tlId
+          );
+          if (!isAlreadyAssigned) {
+            try {
+              await tourLeaderService.assignKloter(tlId, targetKloterId);
+            } catch (err) {
+              console.warn("Failed to assign TL:", err);
+            }
+          }
+        }
+
+        // Synchronize Muthawwif pivot assignment
+        const currentAssignedMWs = (editingGroup.mutawifs && editingGroup.mutawifs.length > 0)
+          ? editingGroup.mutawifs
+          : mutawifs.filter((m) => (m.kloters || []).some((k) => k.id === targetKloterId));
+
+        for (const prevMW of currentAssignedMWs) {
+          const prevId = prevMW.backendId || prevMW.id;
+          if (prevId !== mwId) {
+            try {
+              await mutawifService.unassignMutawifFromKloter(prevId, targetKloterId);
+            } catch (err) {
+              console.warn("Failed to unassign previous Muthawwif:", err);
+            }
+          }
+        }
+        if (mwId) {
+          const isAlreadyAssigned = currentAssignedMWs.some(
+            (m) => (m.backendId || m.id) === mwId
+          );
+          if (!isAlreadyAssigned) {
+            try {
+              await mutawifService.assignMutawifToKloter(mwId, targetKloterId);
+            } catch (err) {
+              console.warn("Failed to assign Muthawwif:", err);
+            }
+          }
+        }
 
         toast("Data kloter berhasil diperbarui.", "success");
       } else {
-        const newGroup = await kloterService.createKloter({
+        savedKloter = await kloterService.createKloter({
           name: formData.name,
           code: formData.formId || null,
           flight_code: formData.kloter || null,
@@ -254,8 +338,8 @@ export default function Groups() {
               : formData.status === 'Archived'
               ? 'archived'
               : 'draft',
-          tour_leader: formData.tourLeader || null,
-          mutawif_local: formData.mutawif || null,
+          tour_leader: tlName,
+          mutawif_local: mwName,
           package_id: null,
           departure_date: null,
           return_date: null,
@@ -263,10 +347,44 @@ export default function Groups() {
           hotel_madinah_id: null,
         });
 
-        setGroups([newGroup, ...groups]);
+        const targetKloterId = savedKloter.backendId || savedKloter.id;
+
+        if (tlId && targetKloterId) {
+          try {
+            await tourLeaderService.assignKloter(tlId, targetKloterId);
+          } catch (err) {
+            console.warn("Failed to assign TL to new kloter:", err);
+          }
+        }
+
+        if (mwId && targetKloterId) {
+          try {
+            await mutawifService.assignMutawifToKloter(mwId, targetKloterId);
+          } catch (err) {
+            console.warn("Failed to assign Muthawwif to new kloter:", err);
+          }
+        }
 
         toast("Kloter baru berhasil dibuat.", "success");
       }
+
+      // Refresh master data to ensure perfect sync
+      const [refreshedKloters, refreshedTLs, refreshedMWs] = await Promise.all([
+        kloterService.getKloters().catch(() => null),
+        tourLeaderService.getTourLeaders().catch(() => null),
+        mutawifService.getMutawifs().catch(() => null),
+      ]);
+
+      if (refreshedKloters) setGroups(refreshedKloters);
+      else {
+        setGroups(
+          editingGroup
+            ? groups.map((g) => (g.backendId === savedKloter.backendId ? savedKloter : g))
+            : [savedKloter, ...groups]
+        );
+      }
+      if (refreshedTLs) setTourLeaders(refreshedTLs);
+      if (refreshedMWs) setMutawifs(refreshedMWs);
 
       setIsFormModalOpen(false);
     } catch (error) {
@@ -1049,12 +1167,34 @@ export default function Groups() {
                       TOUR LEADER (TL)
                     </label>
                     <div className="sm:col-span-8">
-                      <Input 
-                        value={formData.tourLeader || ''} 
-                        onChange={(e) => setFormData({...formData, tourLeader: e.target.value})} 
-                        placeholder="Cth. Ust. H. Muhammad Ridwan" 
-                        className="h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base font-bold text-gray-900 placeholder:text-gray-400 placeholder:font-normal px-4 sm:px-5 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859]"
-                      />
+                      <select
+                        value={formData.tourLeader || ''}
+                        onChange={(e) => setFormData({...formData, tourLeader: e.target.value})}
+                        className={`h-12 sm:h-13 w-full rounded-2xl border border-gray-300 bg-white px-4 sm:px-5 text-base ${
+                          formData.tourLeader ? 'font-bold text-gray-900' : 'font-normal text-gray-400'
+                        } focus:outline-none focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859] cursor-pointer`}
+                      >
+                        <option value="">-- Pilih Tour Leader --</option>
+                        {/* Option for legacy text value if not matching any master data ID */}
+                        {formData.tourLeader && !tourLeaders.some(t => (t.backendId || t.id) === formData.tourLeader || t.id === formData.tourLeader) && (
+                          <option value={formData.tourLeader}>
+                            {formData.tourLeader} (Teks Tersimpan)
+                          </option>
+                        )}
+                        {tourLeaders.map((tl) => {
+                          const tlVal = tl.backendId || tl.id;
+                          const isAssigned = (tl.kloters || []).length > 0;
+                          const currentKloterId = editingGroup?.backendId || editingGroup?.id;
+                          const isAssignedToThis = currentKloterId ? (tl.kloters || []).some(k => k.id === currentKloterId) : false;
+                          const statusBadge = isAssignedToThis ? ' (Saat Ini)' : isAssigned ? ' (Tugas Kloter Lain)' : ` (${tl.status})`;
+
+                          return (
+                            <option key={tl.id} value={tlVal}>
+                              {tl.name}{statusBadge}
+                            </option>
+                          );
+                        })}
+                      </select>
                     </div>
                   </div>
 
@@ -1063,12 +1203,34 @@ export default function Groups() {
                       MUTHAWWIF LOKAL
                     </label>
                     <div className="sm:col-span-8">
-                      <Input 
-                        value={formData.mutawif || ''} 
-                        onChange={(e) => setFormData({...formData, mutawif: e.target.value})} 
-                        placeholder="Cth. Ust. Ibrahim Al-Madani" 
-                        className="h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base font-bold text-gray-900 placeholder:text-gray-400 placeholder:font-normal px-4 sm:px-5 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859]"
-                      />
+                      <select
+                        value={formData.mutawif || ''}
+                        onChange={(e) => setFormData({...formData, mutawif: e.target.value})}
+                        className={`h-12 sm:h-13 w-full rounded-2xl border border-gray-300 bg-white px-4 sm:px-5 text-base ${
+                          formData.mutawif ? 'font-bold text-gray-900' : 'font-normal text-gray-400'
+                        } focus:outline-none focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859] cursor-pointer`}
+                      >
+                        <option value="">-- Pilih Muthawwif Lokal --</option>
+                        {/* Option for legacy text value if not matching any master data ID */}
+                        {formData.mutawif && !mutawifs.some(m => (m.backendId || m.id) === formData.mutawif || m.id === formData.mutawif) && (
+                          <option value={formData.mutawif}>
+                            {formData.mutawif} (Teks Tersimpan)
+                          </option>
+                        )}
+                        {mutawifs.map((mw) => {
+                          const mwVal = mw.backendId || mw.id;
+                          const isAssigned = (mw.kloters || []).length > 0;
+                          const currentKloterId = editingGroup?.backendId || editingGroup?.id;
+                          const isAssignedToThis = currentKloterId ? (mw.kloters || []).some(k => k.id === currentKloterId) : false;
+                          const statusBadge = isAssignedToThis ? ' (Saat Ini)' : isAssigned ? ' (Tugas Kloter Lain)' : ` (${mw.status})`;
+
+                          return (
+                            <option key={mw.id} value={mwVal}>
+                              {mw.name}{statusBadge}
+                            </option>
+                          );
+                        })}
+                      </select>
                     </div>
                   </div>
                 </div>

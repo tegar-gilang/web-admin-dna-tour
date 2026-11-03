@@ -965,7 +965,7 @@ export default function Journey() {
                     </TableHead>
                     <TableHead className="w-[180px] font-semibold text-gray-900">Hari & Waktu</TableHead>
                     <TableHead className="font-semibold text-gray-900">Detail Kegiatan</TableHead>
-                    <TableHead className="w-[150px] font-semibold text-gray-900">Lokasi & PIC</TableHead>
+                    <TableHead className="w-[220px] font-semibold text-gray-900">Lokasi & PIC</TableHead>
                     <TableHead className="w-[140px] font-semibold text-gray-900">Pelaksanaan</TableHead>
                     <TableHead className="w-[130px] font-semibold text-gray-900">Pengingat</TableHead>
                     <TableHead className="text-right pr-6 font-semibold text-gray-900">Aksi</TableHead>
@@ -1006,10 +1006,28 @@ export default function Journey() {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className="flex items-center text-gray-800 text-xs font-medium truncate max-w-[170px]">
-                            <MapPin className="w-3.5 h-3.5 text-red-600 mr-1 shrink-0" />
-                            <span className="truncate">{schedule.location || '-'}</span>
+                        <TableCell className="min-w-0">
+                          <div className="flex flex-col gap-1 min-w-0">
+                            <div className="flex items-center gap-1 min-w-0">
+                              <MapPin className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                              <span
+                                className="text-xs font-medium text-gray-800 break-words leading-snug"
+                                title={schedule.location || undefined}
+                              >
+                                {schedule.location || '-'}
+                              </span>
+                            </div>
+                            {schedule.pic && (
+                              <div className="flex items-center gap-1 min-w-0">
+                                <User className="w-3 h-3 text-gray-400 shrink-0" />
+                                <span
+                                  className="text-[11px] font-medium text-gray-500 break-words leading-snug"
+                                  title={schedule.pic}
+                                >
+                                  {schedule.pic}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell>
