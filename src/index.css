@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Poppins", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-poppins: "Poppins", sans-serif;
+
+  --color-brand-50: #fce8e7;
+  --color-brand-100: #f8c9c6;
+  --color-brand-200: #f29c97;
+  --color-brand-300: #ea655e;
+  --color-brand-400: #e23b32;
+  --color-brand-500: #740A03;
+  --color-brand-600: #740A03;
+  --color-brand-700: #610802;
+  --color-brand-800: #4f0602;
+  --color-brand-900: #3f0401;
+  --color-brand-950: #220201;
+
+  --color-emerald-50: #ecfdf5;
+  --color-emerald-100: #d1fae5;
+  --color-emerald-200: #a7f3d0;
+  --color-emerald-300: #6ee7b7;
+  --color-emerald-400: #34d399;
+  --color-emerald-500: #10b981;
+  --color-emerald-600: #059669;
+  --color-emerald-700: #047857;
+  --color-emerald-800: #065f46;
+  --color-emerald-900: #064e3b;
+  --color-emerald-950: #022c22;
+}
+
+/* Silky-smooth global transitions without layout shifting */
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.18s ease-out forwards;
+}
+
+@keyframes tabIndicatorPop {
+  0% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.animate-tab-indicator {
+  animation: tabIndicatorPop 0.18s ease-out forwards;
+}
+
+/* Stable micro-interactions without structural displacement */
+button, a, [role="button"], input, select, textarea {
+  transition-property: color, background-color, border-color, opacity, box-shadow;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  transition-duration: 150ms;
+}
+
+@layer base {
+  html, body, button, input, select, textarea {
+    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+}
+
