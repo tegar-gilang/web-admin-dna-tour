@@ -973,27 +973,6 @@ export default function RoomAllocation() {
 
       {/* Main Room Meet Table */}
       <Card className="border-gray-200/80 shadow-2xs rounded-2xl bg-white overflow-hidden print:border-none print:shadow-none print:rounded-none">
-        
-        {/* Table Header Area */}
-        <div className="p-4 sm:p-5 border-b border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-base font-bold text-gray-900">
-                Daftar Kamar Hotel &bull; {currentHotelName} ({selectedHotelLocation})
-              </h3>
-            </div>
-            <p className="text-xs text-gray-500 font-medium mt-0.5">
-              {selectedKloter} &bull; Periode: {periodTitle} &bull; Total {filteredRooms.length} Kamar Ditampilkan
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase border shadow-2xs text-emerald-800 bg-emerald-50 border-emerald-300">
-              {kloterLocationRooms.length} Kamar Terdaftar
-            </span>
-          </div>
-        </div>
-
         {/* Clean Data Table */}
         <div className="overflow-x-auto w-full">
           <table className="w-full text-left text-xs border-collapse min-w-[850px]">
