@@ -95,8 +95,9 @@ function mapBackendToGroup(backend: BackendKloter): Group {
   return {
     id: backend.code || backend.id,
     backendId: backend.id,
+    formId: backend.code || '',
     name: backend.name,
-    kloter: backend.flight_code || backend.code || '',
+    kloter: backend.flight_code || '',
     pilgrims: backend.jamaah_count || 0,
     tourLeader: backend.tour_leader || '-',
     mutawif: backend.mutawif_local || '-',

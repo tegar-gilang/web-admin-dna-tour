@@ -219,6 +219,8 @@ export default function Groups() {
 
     setFormData({
       ...g,
+      formId: g.formId || (g.id !== g.backendId ? g.id : ''),
+      kloter: g.kloter || '',
       tourLeader: initialTL,
       mutawif: assignedMW,
     });
@@ -249,28 +251,32 @@ export default function Groups() {
       let savedKloter: Group;
 
       if (editingGroup) {
-        if (!editingGroup.backendId) {
+        const targetKloterId = editingGroup.backendId || editingGroup.id;
+        if (!targetKloterId) {
           toast("ID backend kloter tidak ditemukan.", "error");
           return;
         }
 
-        const targetKloterId = editingGroup.backendId;
+        const updatePayload: Record<string, any> = {
+          name: formData.name.trim(),
+          flight_code: formData.kloter?.trim() || null,
+          status:
+            formData.status === 'Active' || formData.status === 'Aktif'
+              ? 'active'
+              : formData.status === 'Archived' || formData.status === 'Diarsipkan'
+              ? 'archived'
+              : 'draft',
+          tour_leader: tlName,
+          mutawif_local: mwName,
+        };
+
+        if (formData.formId && formData.formId.trim()) {
+          updatePayload.code = formData.formId.trim();
+        }
 
         savedKloter = await kloterService.updateKloter(
           targetKloterId,
-          {
-            name: formData.name,
-            code: formData.formId || null,
-            flight_code: formData.kloter || null,
-            status:
-              formData.status === 'Active'
-                ? 'active'
-                : formData.status === 'Archived'
-                ? 'archived'
-                : 'draft',
-            tour_leader: tlName,
-            mutawif_local: mwName,
-          }
+          updatePayload
         );
 
         // Synchronize Tour Leader pivot assignment
