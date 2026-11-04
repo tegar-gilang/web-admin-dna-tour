@@ -1036,10 +1036,10 @@ export default function RoomAllocation() {
                                 setTargetRoomId(room.id);
                                 setIsAddOccupantOpen(true);
                               }}
-                              className="inline-flex items-center gap-1 text-[11px] text-emerald-700 hover:text-emerald-900 font-bold transition-colors mt-1 print:hidden cursor-pointer"
+                              className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 text-[11px] font-bold text-white bg-[#00a859] hover:bg-[#008f4c] active:scale-95 rounded-lg shadow-2xs transition-all mt-1 print:hidden cursor-pointer w-max"
                             >
-                              <UserPlus className="w-3 h-3" />
-                              + Jamaah
+                              <UserPlus className="w-3.5 h-3.5" />
+                              <span>+ Jamaah</span>
                             </button>
                           )}
                         </div>
