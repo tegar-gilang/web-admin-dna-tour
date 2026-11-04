@@ -957,47 +957,6 @@ export default function RoomAllocation() {
         </div>
       </div>
 
-      {/* Unassigned Pilgrims Alert Card (if any) */}
-      {unassignedPilgrims.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:hidden">
-          <div className="flex items-start gap-3">
-            <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold shrink-0 mt-0.5">
-              <AlertCircle className="w-5 h-5" />
-            </div>
-            <div>
-              <h4 className="text-sm font-bold text-amber-950">
-                Ada {unassignedPilgrims.length} Jamaah Belum Dialokasikan ke Kamar {selectedHotelLocation}
-              </h4>
-              <p className="text-xs text-amber-800 mt-0.5">
-                {unassignedPilgrims.slice(0, 3).map(p => p.name).join(', ')}
-                {unassignedPilgrims.length > 3 ? ` dan ${unassignedPilgrims.length - 3} lainnya` : ''}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <Button 
-              size="sm"
-              onClick={() => {
-                const emptyRoom = kloterLocationRooms.find(r => {
-                  const max = r.category === 'DOUBLE' ? 2 : r.category === 'TRIPLE' ? 3 : r.category === 'QUAD' ? 4 : 5;
-                  return r.occupants.length < max;
-                });
-                if (emptyRoom) {
-                  setTargetRoomId(emptyRoom.id);
-                  setIsAddOccupantOpen(true);
-                } else {
-                  setIsAddRoomOpen(true);
-                }
-              }}
-              className="bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs h-9 px-4 rounded-xl shrink-0 cursor-pointer shadow-2xs flex-1 sm:flex-none justify-center"
-            >
-              <UserPlus className="w-3.5 h-3.5 mr-1.5" />
-              Alokasikan Sekarang
-            </Button>
-          </div>
-        </div>
-      )}
 
       {isLoadingRooms && (
         <div className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3 text-sm text-blue-800 font-medium">
