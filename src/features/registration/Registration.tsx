@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+﻿﻿﻿import React, { useState, useMemo, useEffect } from 'react';
 import { toast } from '@/lib/toast';
 import { registrationService } from '@/core/services/registrationService';
 import { packageService } from '@/core/services/packageService';
@@ -626,6 +626,35 @@ export default function Registration() {
         detailData = p;
       }
 
+      // Pastikan stocks tersedia saat modal edit dibuka
+      let currentStocks = stocks;
+      if (!currentStocks || currentStocks.length === 0) {
+        try {
+          currentStocks = await stockService.getStocks();
+          if (currentStocks && currentStocks.length > 0) {
+            setStocks(currentStocks);
+          }
+        } catch (e) {
+          console.warn('Gagal memuat stock di openEditModal:', e);
+        }
+      }
+
+      // Jika data equipment pendaftaran lama belum memiliki stock_id (null),
+      // lakukan auto-match dengan master stock agar stock_id terisi dengan ID valid.
+      if (detailData.equipments && detailData.equipments.length > 0 && currentStocks && currentStocks.length > 0) {
+        const enrichedEquipments = detailData.equipments.map((eq) => {
+          if (eq.stock_id) return eq;
+          const matched = currentStocks.find(
+            (s) => s.name.trim().toLowerCase() === eq.equipment_name.trim().toLowerCase()
+          );
+          return matched ? { ...eq, stock_id: matched.id } : eq;
+        });
+        detailData = {
+          ...detailData,
+          equipments: enrichedEquipments
+        };
+      }
+
       setEditingPilgrim(detailData);
 
       setModifiedDates({
@@ -789,23 +818,87 @@ export default function Registration() {
           ? 'Pembayaran Lunas Pendaftaran'
           : 'Belum Ada Pembayaran');
 
+    // Ambil daftar stocks terbaru (fallback ke state jika getStocks gagal)
+    let currentStocks = stocks;
+    if (!currentStocks || currentStocks.length === 0) {
+      try {
+        currentStocks = await stockService.getStocks();
+        if (currentStocks && currentStocks.length > 0) {
+          setStocks(currentStocks);
+        }
+      } catch (e) {
+        console.warn('Gagal memuat ulang daftar stock saat normalisasi equipment:', e);
+      }
+    }
+
+    const isValidUuid = (val?: string | null): boolean => {
+      if (!val) return false;
+      return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(val);
+    };
+
     const normalizedEquipments =
       formData.equipments?.map((eq) => {
-        if (eq.stock_id) return eq;
-        const matchedStock = stocks.find(
+        // 1. Jika stock_id sudah UUID valid, pertahankan
+        if (isValidUuid(eq.stock_id)) {
+          return eq;
+        }
+
+        // 2. Jika stock_id kosong / tidak valid, coba lookup dari daftar stock berdasarkan nama
+        const matchedStock = currentStocks.find(
           (s) =>
             s.name.trim().toLowerCase() ===
             eq.equipment_name.trim().toLowerCase()
         );
-        return {
-          ...eq,
-          stock_id: matchedStock?.id ?? null
-        };
+
+        if (matchedStock?.id) {
+          return {
+            ...eq,
+            stock_id: matchedStock.id
+          };
+        }
+
+        // 3. Jika tetap tidak cocok, biarkan apa adanya
+        return eq;
       });
+
+    // Cek apakah data perlengkapan (status diterima atau ukuran) diubah oleh pengguna
+    const isEquipmentsChanged = () => {
+      if (!editingPilgrim) return true;
+      const orig = editingPilgrim.equipments || [];
+      const curr = formData.equipments || [];
+      if (orig.length !== curr.length) return true;
+
+      for (const c of curr) {
+        const o = orig.find(
+          (item) =>
+            (item.id && c.id && item.id === c.id) ||
+            item.equipment_name.trim().toLowerCase() === c.equipment_name.trim().toLowerCase()
+        );
+        if (!o) return true;
+        if (Boolean(o.is_received) !== Boolean(c.is_received)) return true;
+        if ((o.size || null) !== (c.size || null)) return true;
+      }
+      return false;
+    };
+
+    const equipmentsModified = isEquipmentsChanged();
+
+    // Jika user mengedit perlengkapan saat update, pastikan tidak ada stock_id yang tidak valid
+    if (editingPilgrim && equipmentsModified && normalizedEquipments) {
+      const invalidEq = normalizedEquipments.find((eq) => !isValidUuid(eq.stock_id));
+      if (invalidEq) {
+        toast(
+          'Gagal menyimpan: perlengkapan ' + invalidEq.equipment_name + ' belum terhubung ke Master Stok.',
+          'error'
+        );
+        return;
+      }
+    }
 
     const preparedData = {
       ...formData,
-      equipments: normalizedEquipments,
+      // Saat EDIT: jika user tidak mengubah perlengkapan, jangan kirim equipments agar tidak memicu validasi ulang
+      equipments: editingPilgrim && !equipmentsModified ? undefined : normalizedEquipments,
       paymentOption: payOption,
       totalAmount: totalAmt,
       paidAmount: paidAmt,

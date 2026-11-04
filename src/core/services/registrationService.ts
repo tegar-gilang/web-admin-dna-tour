@@ -1,4 +1,4 @@
-import { apiClient } from './apiClient';
+﻿import { apiClient } from './apiClient';
 import { Pilgrim, RegistrationEquipment } from '../store';
 
 export interface BackendRegistration {
@@ -361,7 +361,7 @@ function mapPilgrimToBackend(
   // - size
   // ============================================================
 
-  if (p.equipments) {
+  if (p.equipments && p.equipments.length > 0) {
     payload.equipments =
       p.equipments.map(
         (equipment) => {
@@ -396,7 +396,7 @@ function mapPilgrimToBackend(
           return equipmentPayload;
         }
       );
-  } else {
+  } else if (!isUpdate) {
     payload.equipments = [];
   }
 
