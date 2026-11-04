@@ -775,7 +775,7 @@ export default function RoomAllocation() {
       {/* Main Controls & Filters Bar */}
       <div className="bg-white border border-gray-200/80 rounded-2xl p-5 shadow-2xs space-y-4 print:hidden">
         {/* Row 1: Kloter Filter (Left) & Hotel Location + Hotel Name + Periode (Right) */}
-        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 pb-2 sm:pb-3">
           
           {/* Kloter Select */}
           <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 h-10 w-full sm:w-[260px] shrink-0">
