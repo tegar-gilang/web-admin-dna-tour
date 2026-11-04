@@ -850,11 +850,9 @@ export default function RoomAllocation() {
           </div>
         </div>
 
-        {/* Row 2: Search Box (Di Bawah Filter Kloter) & Category Filter Pills */}
-        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 pt-3.5 border-t border-gray-100">
-          
-          {/* Search Box - Posisinya tepat di bawah alokasi filter kloter */}
-          <div className="relative w-full sm:w-[260px] shrink-0">
+        {/* Row 2: Search Box (Di Bawah Filter Kloter) */}
+        <div className="flex items-center justify-between gap-3 pt-3.5 border-t border-gray-100">
+          <div className="relative w-full sm:w-[320px]">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <Input 
               placeholder="Cari penghuni atau no. kamar..." 
@@ -871,15 +869,19 @@ export default function RoomAllocation() {
               </button>
             )}
           </div>
+        </div>
 
-          {/* Room Category Tabs / Filter Pills */}
-          <div className="flex flex-wrap items-center gap-2 overflow-x-auto hide-scrollbar py-0.5">
-            <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mr-1">Filter Tipe:</span>
+        {/* Row 3: Filter Tipe 1 Baris Ke Samping (Di Bawah Search) & Info Kloter/Terdaftar Segaris */}
+        <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between gap-3 pt-3 border-t border-gray-100">
+          
+          {/* Room Category Tabs / Filter Pills - 1 Baris Ke Samping */}
+          <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar w-full xl:w-auto py-1">
+            <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mr-1 whitespace-nowrap shrink-0">Filter Tipe:</span>
             
             <button
               type="button"
               onClick={() => setCategoryFilter('ALL')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                 categoryFilter === 'ALL'
                   ? 'bg-gray-900 text-white shadow-2xs'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -891,7 +893,7 @@ export default function RoomAllocation() {
             <button
               type="button"
               onClick={() => setCategoryFilter('DOUBLE')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
                 categoryFilter === 'DOUBLE'
                   ? 'bg-blue-600 text-white shadow-2xs'
                   : 'bg-blue-50 border border-blue-200 text-blue-900 hover:bg-blue-100'
@@ -904,7 +906,7 @@ export default function RoomAllocation() {
             <button
               type="button"
               onClick={() => setCategoryFilter('TRIPLE')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
                 categoryFilter === 'TRIPLE'
                   ? 'bg-purple-600 text-white shadow-2xs'
                   : 'bg-purple-50 border border-purple-200 text-purple-900 hover:bg-purple-100'
@@ -917,7 +919,7 @@ export default function RoomAllocation() {
             <button
               type="button"
               onClick={() => setCategoryFilter('QUAD')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
                 categoryFilter === 'QUAD'
                   ? 'bg-emerald-600 text-white shadow-2xs'
                   : 'bg-emerald-50 border border-emerald-200 text-emerald-900 hover:bg-emerald-100'
@@ -930,7 +932,7 @@ export default function RoomAllocation() {
             <button
               type="button"
               onClick={() => setCategoryFilter('QUINT')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
                 categoryFilter === 'QUINT'
                   ? 'bg-amber-600 text-white shadow-2xs'
                   : 'bg-amber-50 border border-amber-200 text-amber-900 hover:bg-amber-100'
@@ -943,7 +945,7 @@ export default function RoomAllocation() {
             <button
               type="button"
               onClick={() => setCategoryFilter('EMPTY')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                 categoryFilter === 'EMPTY'
                   ? 'bg-rose-600 text-white shadow-2xs'
                   : 'bg-rose-50 border border-rose-200 text-rose-800 hover:bg-rose-100'
@@ -953,7 +955,8 @@ export default function RoomAllocation() {
             </button>
           </div>
 
-          <div className="text-xs font-medium text-gray-500 whitespace-nowrap self-end lg:self-center">
+          {/* Info Kloter & Terdaftar - Segaris dengan Filter Tipe */}
+          <div className="text-xs font-medium text-gray-500 whitespace-nowrap shrink-0 self-end xl:self-center">
             Kloter: <strong className="text-gray-900">{selectedKloter}</strong> &bull; Terdaftar: <strong className="text-gray-900">{groupPilgrims.length} Jamaah</strong>
           </div>
         </div>
