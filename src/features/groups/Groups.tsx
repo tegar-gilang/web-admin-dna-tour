@@ -187,6 +187,70 @@ export default function Groups() {
   }
 };
 
+  const getStaffAssignmentInfo = (
+    staffKloters: Array<{ id: string; name?: string; departure_date?: string | null; return_date?: string | null }> | undefined,
+    currentKloterId: string | undefined,
+    currentDep: string | undefined | null,
+    currentRet: string | undefined | null,
+    staffStatus?: string
+  ) => {
+    const klotersList = staffKloters || [];
+    const isAssignedToThis = currentKloterId 
+      ? klotersList.some(k => k.id === currentKloterId) 
+      : false;
+    const otherKloters = klotersList.filter(k => !currentKloterId || k.id !== currentKloterId);
+    const isAssignedOther = otherKloters.length > 0;
+
+    let hasConflict = false;
+    if (isAssignedOther && currentDep) {
+      const curStart = new Date(currentDep).getTime();
+      const curEnd = new Date(currentRet || currentDep).getTime();
+
+      if (!isNaN(curStart) && !isNaN(curEnd)) {
+        for (const k of otherKloters) {
+          const matchedGroup = groups.find(g => (g.backendId || g.id) === k.id || g.name === k.name);
+          const otherDepStr = matchedGroup?.departureDate || k.departure_date;
+          const otherRetStr = matchedGroup?.returnDate || k.return_date || otherDepStr;
+
+          if (otherDepStr) {
+            const oStart = new Date(otherDepStr).getTime();
+            const oEnd = new Date(otherRetStr || otherDepStr).getTime();
+
+            if (!isNaN(oStart) && !isNaN(oEnd)) {
+              if (curStart <= oEnd && curEnd >= oStart) {
+                hasConflict = true;
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const rawStatus = (staffStatus?.toLowerCase() === 'resting' || staffStatus?.toLowerCase() === 'istirahat')
+      ? 'Istirahat/Off'
+      : staffStatus;
+
+    let statusBadge = '';
+    if (isAssignedToThis) {
+      statusBadge = ' (Saat Ini)';
+    } else if (hasConflict) {
+      statusBadge = ' (Tugas Kloter Lain - Jadwal Bentrok)';
+    } else if (isAssignedOther) {
+      statusBadge = ' (Tugas Kloter Lain)';
+    } else if (rawStatus) {
+      statusBadge = ` (${rawStatus})`;
+    }
+
+    return {
+      isAssignedToThis,
+      isAssignedOther,
+      hasConflict,
+      statusBadge,
+      disabled: hasConflict,
+    };
+  };
+
   const openAddModal = () => {
     setEditingGroup(null);
     setModalMode('edit');
@@ -196,6 +260,8 @@ export default function Groups() {
       name: `Kloter ${groups.length + 1} Al-`,
       kloter: `KNO-0${groups.length + 1}`,
       status: 'Active',
+      departureDate: '',
+      returnDate: '',
       tourLeader: '',
       mutawif: '',
       pilgrims: 0
@@ -221,6 +287,8 @@ export default function Groups() {
       ...g,
       formId: g.formId || (g.id !== g.backendId ? g.id : ''),
       kloter: g.kloter || '',
+      departureDate: g.departureDate ? g.departureDate.substring(0, 10) : '',
+      returnDate: g.returnDate ? g.returnDate.substring(0, 10) : '',
       tourLeader: initialTL,
       mutawif: assignedMW,
     });
@@ -230,6 +298,11 @@ export default function Groups() {
   const saveGroup = async () => {
     if (!formData.name?.trim()) {
       toast("Nama kloter wajib diisi.", "error");
+      return;
+    }
+
+    if (formData.departureDate && formData.returnDate && formData.departureDate > formData.returnDate) {
+      toast("Tanggal kepulangan harus sama atau setelah tanggal keberangkatan.", "error");
       return;
     }
 
@@ -248,6 +321,38 @@ export default function Groups() {
       const mwName = selectedMW ? selectedMW.name : (formData.mutawif?.trim() || null);
       const mwId = selectedMW ? (selectedMW.backendId || selectedMW.id) : null;
 
+      const currentKloterId = editingGroup?.backendId || editingGroup?.id;
+
+      // Validasi bentrok jadwal Tour Leader
+      if (selectedTL) {
+        const tlInfo = getStaffAssignmentInfo(
+          selectedTL.kloters,
+          currentKloterId,
+          formData.departureDate,
+          formData.returnDate,
+          selectedTL.status
+        );
+        if (tlInfo.hasConflict) {
+          toast("Tour Leader yang dipilih memiliki jadwal yang bentrok dengan kloter lain.", "error");
+          return;
+        }
+      }
+
+      // Validasi bentrok jadwal Muthawwif
+      if (selectedMW) {
+        const mwInfo = getStaffAssignmentInfo(
+          selectedMW.kloters,
+          currentKloterId,
+          formData.departureDate,
+          formData.returnDate,
+          selectedMW.status
+        );
+        if (mwInfo.hasConflict) {
+          toast("Muthawwif yang dipilih memiliki jadwal yang bentrok dengan kloter lain.", "error");
+          return;
+        }
+      }
+
       let savedKloter: Group;
 
       if (editingGroup) {
@@ -260,6 +365,8 @@ export default function Groups() {
         const updatePayload: Record<string, any> = {
           name: formData.name.trim(),
           flight_code: formData.kloter?.trim() || null,
+          departure_date: formData.departureDate || null,
+          return_date: formData.returnDate || null,
           status:
             formData.status === 'Active' || formData.status === 'Aktif'
               ? 'active'
@@ -347,8 +454,8 @@ export default function Groups() {
           tour_leader: tlName,
           mutawif_local: mwName,
           package_id: null,
-          departure_date: null,
-          return_date: null,
+          departure_date: formData.departureDate || null,
+          return_date: formData.returnDate || null,
           hotel_makkah_id: null,
           hotel_madinah_id: null,
         });
@@ -1035,6 +1142,26 @@ export default function Groups() {
                       )}
                     </span>
                   </div>
+
+                  <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
+                    <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
+                      <Calendar className="w-4 h-4 text-[#782820] shrink-0" />
+                      <span>Tgl Keberangkatan</span>
+                    </div>
+                    <span className="font-bold text-gray-900 text-sm text-right">
+                      {editingGroup.departureDate || '-'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
+                    <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
+                      <Calendar className="w-4 h-4 text-[#782820] shrink-0" />
+                      <span>Tgl Kepulangan</span>
+                    </div>
+                    <span className="font-bold text-gray-900 text-sm text-right">
+                      {editingGroup.returnDate || '-'}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -1153,6 +1280,35 @@ export default function Groups() {
                       </select>
                     </div>
                   </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
+                    <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
+                      TGL KEBERANGKATAN
+                    </label>
+                    <div className="sm:col-span-8">
+                      <Input 
+                        type="date"
+                        value={formData.departureDate || ''} 
+                        onChange={(e) => setFormData({...formData, departureDate: e.target.value})} 
+                        className="h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base font-bold text-gray-900 px-4 sm:px-5 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
+                    <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
+                      TGL KEPULANGAN
+                    </label>
+                    <div className="sm:col-span-8">
+                      <Input 
+                        type="date"
+                        value={formData.returnDate || ''} 
+                        min={formData.departureDate || undefined}
+                        onChange={(e) => setFormData({...formData, returnDate: e.target.value})} 
+                        className="h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base font-bold text-gray-900 px-4 sm:px-5 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859]"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -1189,17 +1345,23 @@ export default function Groups() {
                         )}
                         {tourLeaders.map((tl) => {
                           const tlVal = tl.backendId || tl.id;
-                          const isAssigned = (tl.kloters || []).length > 0;
                           const currentKloterId = editingGroup?.backendId || editingGroup?.id;
-                          const isAssignedToThis = currentKloterId ? (tl.kloters || []).some(k => k.id === currentKloterId) : false;
-                          const tlStatusDisplay = (tl.status?.toLowerCase() === 'resting' || tl.status?.toLowerCase() === 'istirahat')
-                            ? 'Istirahat/Off'
-                            : tl.status;
-                          const statusBadge = isAssignedToThis ? ' (Saat Ini)' : isAssigned ? ' (Tugas Kloter Lain)' : ` (${tlStatusDisplay})`;
+                          const info = getStaffAssignmentInfo(
+                            tl.kloters,
+                            currentKloterId,
+                            formData.departureDate,
+                            formData.returnDate,
+                            tl.status
+                          );
 
                           return (
-                            <option key={tl.id} value={tlVal}>
-                              {tl.name}{statusBadge}
+                            <option 
+                              key={tl.id} 
+                              value={tlVal}
+                              disabled={info.disabled}
+                              className={info.disabled ? "text-gray-400 bg-gray-50" : ""}
+                            >
+                              {tl.name}{info.statusBadge}
                             </option>
                           );
                         })}
@@ -1228,17 +1390,23 @@ export default function Groups() {
                         )}
                         {mutawifs.map((mw) => {
                           const mwVal = mw.backendId || mw.id;
-                          const isAssigned = (mw.kloters || []).length > 0;
                           const currentKloterId = editingGroup?.backendId || editingGroup?.id;
-                          const isAssignedToThis = currentKloterId ? (mw.kloters || []).some(k => k.id === currentKloterId) : false;
-                          const mwStatusDisplay = (mw.status?.toLowerCase() === 'resting' || mw.status?.toLowerCase() === 'istirahat')
-                            ? 'Istirahat/Off'
-                            : mw.status;
-                          const statusBadge = isAssignedToThis ? ' (Saat Ini)' : isAssigned ? ' (Tugas Kloter Lain)' : ` (${mwStatusDisplay})`;
+                          const info = getStaffAssignmentInfo(
+                            mw.kloters,
+                            currentKloterId,
+                            formData.departureDate,
+                            formData.returnDate,
+                            mw.status
+                          );
 
                           return (
-                            <option key={mw.id} value={mwVal}>
-                              {mw.name}{statusBadge}
+                            <option 
+                              key={mw.id} 
+                              value={mwVal}
+                              disabled={info.disabled}
+                              className={info.disabled ? "text-gray-400 bg-gray-50" : ""}
+                            >
+                              {mw.name}{info.statusBadge}
                             </option>
                           );
                         })}

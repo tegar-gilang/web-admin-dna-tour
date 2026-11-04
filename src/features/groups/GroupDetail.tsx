@@ -538,7 +538,76 @@ if (isLoadingGroup) {
     toast('Data kloter berhasil diunduh ke Excel!', 'success');
   };
 
+  const getStaffAssignmentInfo = (
+    staffKloters: Array<{ id: string; name?: string; departure_date?: string | null; return_date?: string | null }> | undefined,
+    currentKloterId: string | undefined,
+    currentDep: string | undefined | null,
+    currentRet: string | undefined | null,
+    staffStatus?: string
+  ) => {
+    const klotersList = staffKloters || [];
+    const isAssignedToThis = currentKloterId 
+      ? klotersList.some(k => k.id === currentKloterId) 
+      : false;
+    const otherKloters = klotersList.filter(k => !currentKloterId || k.id !== currentKloterId);
+    const isAssignedOther = otherKloters.length > 0;
+
+    let hasConflict = false;
+    if (isAssignedOther && currentDep) {
+      const curStart = new Date(currentDep).getTime();
+      const curEnd = new Date(currentRet || currentDep).getTime();
+
+      if (!isNaN(curStart) && !isNaN(curEnd)) {
+        for (const k of otherKloters) {
+          const matchedGroup = groups.find(g => (g.backendId || g.id) === k.id || g.name === k.name);
+          const otherDepStr = matchedGroup?.departureDate || k.departure_date;
+          const otherRetStr = matchedGroup?.returnDate || k.return_date || otherDepStr;
+
+          if (otherDepStr) {
+            const oStart = new Date(otherDepStr).getTime();
+            const oEnd = new Date(otherRetStr || otherDepStr).getTime();
+
+            if (!isNaN(oStart) && !isNaN(oEnd)) {
+              if (curStart <= oEnd && curEnd >= oStart) {
+                hasConflict = true;
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const rawStatus = (staffStatus?.toLowerCase() === 'resting' || staffStatus?.toLowerCase() === 'istirahat')
+      ? 'Istirahat/Off'
+      : staffStatus;
+
+    let statusBadge = '';
+    if (isAssignedToThis) {
+      statusBadge = ' (Saat Ini)';
+    } else if (hasConflict) {
+      statusBadge = ' (Tugas Kloter Lain - Jadwal Bentrok)';
+    } else if (isAssignedOther) {
+      statusBadge = ' (Tugas Kloter Lain)';
+    } else if (rawStatus) {
+      statusBadge = ` (${rawStatus})`;
+    }
+
+    return {
+      isAssignedToThis,
+      isAssignedOther,
+      hasConflict,
+      statusBadge,
+      disabled: hasConflict,
+    };
+  };
+
   const handleSaveEditGroup = async () => {
+    if (editFormData.departureDate && editFormData.returnDate && editFormData.departureDate > editFormData.returnDate) {
+      toast("Tanggal kepulangan harus sama atau setelah tanggal keberangkatan.", "error");
+      return;
+    }
+
     try {
       const targetKloterId = group.backendId || group.id;
 
@@ -556,11 +625,43 @@ if (isLoadingGroup) {
       const mwName = selectedMW ? selectedMW.name : (editFormData.mutawif?.trim() || null);
       const mwId = selectedMW ? (selectedMW.backendId || selectedMW.id) : null;
 
+      // Validasi bentrok jadwal Tour Leader
+      if (selectedTL) {
+        const tlInfo = getStaffAssignmentInfo(
+          selectedTL.kloters,
+          targetKloterId,
+          editFormData.departureDate,
+          editFormData.returnDate,
+          selectedTL.status
+        );
+        if (tlInfo.hasConflict) {
+          toast("Tour Leader yang dipilih memiliki jadwal yang bentrok dengan kloter lain.", "error");
+          return;
+        }
+      }
+
+      // Validasi bentrok jadwal Muthawwif
+      if (selectedMW) {
+        const mwInfo = getStaffAssignmentInfo(
+          selectedMW.kloters,
+          targetKloterId,
+          editFormData.departureDate,
+          editFormData.returnDate,
+          selectedMW.status
+        );
+        if (mwInfo.hasConflict) {
+          toast("Muthawwif yang dipilih memiliki jadwal yang bentrok dengan kloter lain.", "error");
+          return;
+        }
+      }
+
       let updatedGroup: Group | null = null;
       if (group.backendId) {
         updatedGroup = await kloterService.updateKloter(group.backendId, {
           name: editFormData.name || group.name,
           flight_code: editFormData.kloter || null,
+          departure_date: editFormData.departureDate || null,
+          return_date: editFormData.returnDate || null,
           tour_leader: tlName,
           mutawif_local: mwName,
         });
@@ -721,6 +822,8 @@ if (isLoadingGroup) {
 
               setEditFormData({
                 ...group,
+                departureDate: group.departureDate ? group.departureDate.substring(0, 10) : '',
+                returnDate: group.returnDate ? group.returnDate.substring(0, 10) : '',
                 tourLeader: initialTL,
                 mutawif: assignedMW,
               });
@@ -1773,6 +1876,27 @@ if (isLoadingGroup) {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
+                <label className="font-semibold text-gray-700 mb-1.5 block">Tgl Keberangkatan</label>
+                <Input 
+                  type="date"
+                  value={editFormData.departureDate || ''} 
+                  onChange={(e) => setEditFormData({...editFormData, departureDate: e.target.value})} 
+                  className="h-9.5 text-xs sm:text-sm rounded-xl"
+                />
+              </div>
+              <div>
+                <label className="font-semibold text-gray-700 mb-1.5 block">Tgl Kepulangan</label>
+                <Input 
+                  type="date"
+                  value={editFormData.returnDate || ''} 
+                  min={editFormData.departureDate || undefined}
+                  onChange={(e) => setEditFormData({...editFormData, returnDate: e.target.value})} 
+                  className="h-9.5 text-xs sm:text-sm rounded-xl"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
                 <label className="font-semibold text-gray-700 mb-1.5 block">Tour Leader</label>
                 <select
                   value={editFormData.tourLeader || ''}
@@ -1787,17 +1911,23 @@ if (isLoadingGroup) {
                   )}
                   {tourLeaders.map((tl) => {
                     const tlVal = tl.backendId || tl.id;
-                    const isAssigned = (tl.kloters || []).length > 0;
                     const currentKloterId = group.backendId || group.id;
-                    const isAssignedToThis = currentKloterId ? (tl.kloters || []).some(k => k.id === currentKloterId) : false;
-                    const tlStatusDisplay = (tl.status?.toLowerCase() === 'resting' || tl.status?.toLowerCase() === 'istirahat')
-                      ? 'Istirahat/Off'
-                      : tl.status;
-                    const statusBadge = isAssignedToThis ? ' (Saat Ini)' : isAssigned ? ' (Tugas Kloter Lain)' : ` (${tlStatusDisplay})`;
+                    const info = getStaffAssignmentInfo(
+                      tl.kloters,
+                      currentKloterId,
+                      editFormData.departureDate,
+                      editFormData.returnDate,
+                      tl.status
+                    );
 
                     return (
-                      <option key={tl.id} value={tlVal}>
-                        {tl.name}{statusBadge}
+                      <option 
+                        key={tl.id} 
+                        value={tlVal}
+                        disabled={info.disabled}
+                        className={info.disabled ? "text-gray-400 bg-gray-50" : ""}
+                      >
+                        {tl.name}{info.statusBadge}
                       </option>
                     );
                   })}
@@ -1818,17 +1948,23 @@ if (isLoadingGroup) {
                   )}
                   {mutawifs.map((mw) => {
                     const mwVal = mw.backendId || mw.id;
-                    const isAssigned = (mw.kloters || []).length > 0;
                     const currentKloterId = group.backendId || group.id;
-                    const isAssignedToThis = currentKloterId ? (mw.kloters || []).some(k => k.id === currentKloterId) : false;
-                    const mwStatusDisplay = (mw.status?.toLowerCase() === 'resting' || mw.status?.toLowerCase() === 'istirahat')
-                      ? 'Istirahat/Off'
-                      : mw.status;
-                    const statusBadge = isAssignedToThis ? ' (Saat Ini)' : isAssigned ? ' (Tugas Kloter Lain)' : ` (${mwStatusDisplay})`;
+                    const info = getStaffAssignmentInfo(
+                      mw.kloters,
+                      currentKloterId,
+                      editFormData.departureDate,
+                      editFormData.returnDate,
+                      mw.status
+                    );
 
                     return (
-                      <option key={mw.id} value={mwVal}>
-                        {mw.name}{statusBadge}
+                      <option 
+                        key={mw.id} 
+                        value={mwVal}
+                        disabled={info.disabled}
+                        className={info.disabled ? "text-gray-400 bg-gray-50" : ""}
+                      >
+                        {mw.name}{info.statusBadge}
                       </option>
                     );
                   })}

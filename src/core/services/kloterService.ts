@@ -98,6 +98,8 @@ function mapBackendToGroup(backend: BackendKloter): Group {
     formId: backend.code || '',
     name: backend.name,
     kloter: backend.flight_code || '',
+    departureDate: backend.departure_date ? backend.departure_date.substring(0, 10) : null,
+    returnDate: backend.return_date ? backend.return_date.substring(0, 10) : null,
     pilgrims: backend.jamaah_count || 0,
     tourLeader: backend.tour_leader || '-',
     mutawif: backend.mutawif_local || '-',

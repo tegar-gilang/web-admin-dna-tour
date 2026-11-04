@@ -4,6 +4,8 @@ export interface BackendTourLeaderKloter {
   id: string;
   name: string;
   code?: string;
+  departure_date?: string | null;
+  return_date?: string | null;
   assigned_at?: string | null;
 }
 
@@ -25,6 +27,8 @@ export interface TourLeaderKloter {
   id: string;
   code?: string;
   name: string;
+  departure_date?: string | null;
+  return_date?: string | null;
   assigned_at?: string | null;
 }
 
@@ -146,6 +150,8 @@ export function mapBackendToTourLeader(backend: BackendTourLeader): TourLeader {
     id: k.id,
     name: k.name,
     code: k.code,
+    departure_date: k.departure_date ?? null,
+    return_date: k.return_date ?? null,
     assigned_at: k.assigned_at ?? null,
   }));
 

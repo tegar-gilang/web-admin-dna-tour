@@ -105,6 +105,8 @@ export type Group = {
   status: string;
   hotelMakkahId?: string | null;
   hotelMadinahId?: string | null;
+  departureDate?: string | null;
+  returnDate?: string | null;
 };
 
 export type Family = {
@@ -136,6 +138,8 @@ export type Mutawif = {
     id: string;
     name: string;
     code?: string;
+    departure_date?: string | null;
+    return_date?: string | null;
     assigned_at?: string;
   }>;
 };

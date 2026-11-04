@@ -12,6 +12,8 @@ export interface BackendMutawif {
     id: string;
     name: string;
     code: string;
+    departure_date?: string | null;
+    return_date?: string | null;
     pivot?: {
       assigned_at: string;
     };
@@ -95,6 +97,8 @@ function mapBackendToMutawif(backend: BackendMutawif): Mutawif {
       id: k.id,
       code: k.code,
       name: k.name,
+      departure_date: (k as any).departure_date || null,
+      return_date: (k as any).return_date || null,
       assigned_at: k.pivot?.assigned_at || '',
     }))
   };
