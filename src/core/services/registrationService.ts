@@ -213,8 +213,18 @@ function mapPilgrimToBackend(
   isUpdate = false
 ): any {
   const computeBirthDate = (
-    age?: number
+    age?: number,
+    existingBirthDate?: string
   ) => {
+    if (existingBirthDate) {
+      const normalized = String(existingBirthDate).split('T')[0];
+      const diff_ms = Date.now() - new Date(normalized).getTime();
+      const existingAge = Math.abs(new Date(diff_ms).getUTCFullYear() - 1970);
+      if (!age || existingAge === age) {
+        return normalized;
+      }
+    }
+
     if (!age) {
       return '1990-01-01';
     }
@@ -249,6 +259,28 @@ function mapPilgrimToBackend(
       x.kloter === p.group
   );
 
+  const registrationDateStr = p.registrationDate
+    ? String(p.registrationDate).split('T')[0]
+    : new Date().toISOString().split('T')[0];
+
+  const departureDateStr =
+    p.departureDate && p.departureDate !== '-'
+      ? String(p.departureDate).split('T')[0]
+      : null;
+
+  const resolvedPackageId =
+    pkg?.id ||
+    (isValidUuid(p.packageId) ? p.packageId : undefined) ||
+    packages[0]?.id;
+
+  const resolvedKloterId =
+    !p.group || p.group === 'Belum Ada' || p.group === '-'
+      ? null
+      : grp?.backendId ||
+        (isValidUuid(grp?.id) ? grp.id : null) ||
+        (isValidUuid(p.kloterId) ? p.kloterId : null) ||
+        null;
+
   const payload: any = {
     registration_number:
       p.formId,
@@ -268,7 +300,7 @@ function mapPilgrimToBackend(
       p.phone || '08000000000',
 
     birth_date:
-      computeBirthDate(p.age),
+      computeBirthDate(p.age, p.birthDate),
 
     gender:
       p.gender === 'Perempuan'
@@ -276,19 +308,16 @@ function mapPilgrimToBackend(
         : 'L',
 
     registration_date:
-      p.registrationDate ||
-      new Date()
-        .toISOString()
-        .split('T')[0],
+      registrationDateStr,
 
     departure_date:
-      p.departureDate || null,
+      departureDateStr,
 
     package_id:
-      pkg?.id,
+      resolvedPackageId,
 
     kloter_id:
-      grp?.backendId || null,
+      resolvedKloterId,
 
     pilgrim_id:
       p.pilgrimId || null,
@@ -341,13 +370,15 @@ function mapPilgrimToBackend(
               equipment.equipment_name,
 
             stock_id:
-              equipment.stock_id ?? null,
+              isValidUuid(equipment.stock_id)
+                ? equipment.stock_id
+                : null,
 
             is_received:
-              equipment.is_received,
+              Boolean(equipment.is_received),
 
             size:
-              equipment.size ?? null,
+              equipment.size || null,
           };
 
           /**
@@ -469,6 +500,13 @@ function mapBackendToPilgrim(
       : false;
   };
 
+  const normalizeDate = (
+    dateVal?: string | null
+  ): string => {
+    if (!dateVal) return '';
+    return String(dateVal).split('T')[0];
+  };
+
   return {
     id:
       backend.id,
@@ -486,6 +524,9 @@ function mapBackendToPilgrim(
     group:
       backend.kloter?.name ||
       'Belum Ada',
+
+    kloterId:
+      backend.kloter_id || null,
 
     gender:
       backend.gender === 'L'
@@ -509,14 +550,16 @@ function mapBackendToPilgrim(
       backend.phone,
 
     birthDate:
-      backend.birth_date,
+      normalizeDate(backend.birth_date),
 
     registrationDate:
-      backend.registration_date,
+      normalizeDate(backend.registration_date),
 
     departureDate:
-      backend.departure_date ||
-      '',
+      normalizeDate(backend.departure_date),
+
+    packageId:
+      backend.package_id || null,
 
     umrahPackage:
       backend.package?.name ||
@@ -652,9 +695,10 @@ function mapBackendToPilgrim(
       '-',
 
     paymentDate:
-      backend.payments?.[0]
-        ?.payment_date ||
-      '',
+      normalizeDate(
+        backend.payments?.[0]
+          ?.payment_date
+      ),
 
     paymentNotes:
       backend.payments?.[0]

@@ -613,16 +613,18 @@ export default function Registration() {
   const openEditModal = async (
     p: Pilgrim
   ) => {
-    console.log('OPEN EDIT MODAL:', p.id);
     try {
       setFetchingRegistrations(true);
 
-      const detailData =
-        await registrationService.getRegistration(
-          p.id
-        );
-
-      console.log('DETAIL DATA SEBELUM FORM:', detailData);
+      let detailData = p;
+      try {
+        detailData =
+          await registrationService.getRegistration(
+            p.id
+          );
+      } catch {
+        detailData = p;
+      }
 
       setEditingPilgrim(detailData);
 
@@ -637,21 +639,30 @@ export default function Registration() {
           !!detailData.paymentDate
       });
 
-    setFormData((prev) => {
-      const next = {
+      setFormData({
         ...detailData,
-        paymentOption: detailData.paymentOption || 'DP',
-        totalAmount: detailData.totalAmount || 30000000,
+        passport:
+          detailData.passport === '-'
+            ? ''
+            : detailData.passport || '',
+        umrahPackage:
+          detailData.umrahPackage === '-'
+            ? ''
+            : detailData.umrahPackage || '',
+        group:
+          detailData.group === 'Belum Ada' ||
+          detailData.group === '-'
+            ? ''
+            : detailData.group || '',
+        paymentOption:
+          detailData.paymentOption || 'Belum Bayar',
+        totalAmount:
+          detailData.totalAmount || 30000000,
         paidAmount: 0,
         paymentMethod: '',
         paymentDate: todayStr,
         paymentNotes: ''
-      };
-
-      console.log('EDIT FORM DATA:', next);
-
-      return next;
-    });
+      });
 
       setModalMode('edit');
       setIsModalOpen(true);
@@ -735,16 +746,30 @@ export default function Registration() {
       30000000;
 
     const isEdit =
-      modalMode === 'edit';
+      Boolean(editingPilgrim);
+
+    const enteredPaidAmt =
+      Number(formData.paidAmount) || 0;
 
     const paidAmt =
       isEdit
-        ? Number(formData.paidAmount) || 0
+        ? enteredPaidAmt > 0
+          ? enteredPaidAmt
+          : payOption === 'Bayar Lunas' &&
+              editingPilgrim?.paymentOption !== 'Bayar Lunas'
+            ? editingPilgrim?.remainingCost ??
+              Math.max(
+                0,
+                totalAmt - (editingPilgrim?.paidAmount || 0)
+              )
+            : payOption === 'DP' &&
+                editingPilgrim?.paymentOption === 'Belum Bayar'
+              ? 10000000
+              : 0
         : payOption === 'Bayar Lunas'
           ? totalAmt
           : payOption === 'DP'
-            ? Number(formData.paidAmount) ||
-              10000000
+            ? enteredPaidAmt || 10000000
             : 0;
 
     const payMethod =
@@ -764,8 +789,23 @@ export default function Registration() {
           ? 'Pembayaran Lunas Pendaftaran'
           : 'Belum Ada Pembayaran');
 
+    const normalizedEquipments =
+      formData.equipments?.map((eq) => {
+        if (eq.stock_id) return eq;
+        const matchedStock = stocks.find(
+          (s) =>
+            s.name.trim().toLowerCase() ===
+            eq.equipment_name.trim().toLowerCase()
+        );
+        return {
+          ...eq,
+          stock_id: matchedStock?.id ?? null
+        };
+      });
+
     const preparedData = {
       ...formData,
+      equipments: normalizedEquipments,
       paymentOption: payOption,
       totalAmount: totalAmt,
       paidAmount: paidAmt,
@@ -3141,6 +3181,17 @@ export default function Registration() {
 
                     const toggleEquipment =
                       () => {
+                        const matchedStock =
+                          stocks.find(
+                            (stock) =>
+                              stock.name
+                                .trim()
+                                .toLowerCase() ===
+                              item.name
+                                .trim()
+                                .toLowerCase()
+                          );
+
                         if (equipment) {
                           setFormData({
                             ...formData,
@@ -3150,9 +3201,15 @@ export default function Registration() {
                                   currentEquipment
                                 ) =>
                                   currentEquipment.id ===
-                                  equipment.id
+                                    equipment.id ||
+                                  currentEquipment.equipment_name ===
+                                    item.name
                                     ? {
                                         ...currentEquipment,
+                                        stock_id:
+                                          currentEquipment.stock_id ||
+                                          matchedStock?.id ||
+                                          null,
                                         is_received:
                                           !currentEquipment.is_received
                                       }
@@ -3160,24 +3217,17 @@ export default function Registration() {
                               )
                           });
                         } else {
-                          const stock =
-                            stocks.find(
-                              (stock) =>
-                                stock.name ===
-                                item.name
-                            );
-
                           setFormData({
                             ...formData,
                             equipments: [
                               ...(formData.equipments ||
                                 []),
                               {
-                                id: `temp-${Date.now()}`,
+                                id: `temp-${Date.now()}-${item.name}`,
                                 equipment_name:
                                   item.name,
                                 stock_id:
-                                  stock?.id ??
+                                  matchedStock?.id ??
                                   null,
                                 is_received:
                                   true,
@@ -3191,6 +3241,7 @@ export default function Registration() {
                     return (
                       <div
                         key={item.name}
+                        onClick={toggleEquipment}
                         className="flex items-center gap-4 p-4 border border-gray-200 rounded-2xl bg-white shadow-2xs cursor-pointer hover:border-[#00a859] transition-colors"
                       >
                         <Checkbox
@@ -3199,6 +3250,9 @@ export default function Registration() {
                           }
                           onCheckedChange={
                             toggleEquipment
+                          }
+                          onClick={(e) =>
+                            e.stopPropagation()
                           }
                         />
 
@@ -3222,14 +3276,18 @@ export default function Registration() {
                         'Sabuk'
                       )?.size ?? ''
                     }
-                    disabled={
-                      !getEquipment(
-                        'Sabuk'
-                      )
-                    }
                     onChange={(e) => {
                       const size =
                         e.target.value;
+
+                      const matchedStock =
+                        stocks.find(
+                          (stock) =>
+                            stock.name
+                              .trim()
+                              .toLowerCase() ===
+                            'sabuk'
+                        );
 
                       const sabukEquipment =
                         getEquipment(
@@ -3237,27 +3295,51 @@ export default function Registration() {
                         );
 
                       if (
-                        !sabukEquipment
+                        sabukEquipment
                       ) {
-                        return;
+                        setFormData({
+                          ...formData,
+                          equipments:
+                            formData.equipments?.map(
+                              (equipment) =>
+                                equipment.id ===
+                                  sabukEquipment.id ||
+                                equipment.equipment_name ===
+                                  'Sabuk'
+                                  ? {
+                                      ...equipment,
+                                      stock_id:
+                                        equipment.stock_id ||
+                                        matchedStock?.id ||
+                                        null,
+                                      size:
+                                        size ||
+                                        null
+                                    }
+                                  : equipment
+                            )
+                        });
+                      } else {
+                        setFormData({
+                          ...formData,
+                          equipments: [
+                            ...(formData.equipments ||
+                              []),
+                            {
+                              id: `temp-${Date.now()}-Sabuk`,
+                              equipment_name:
+                                'Sabuk',
+                              stock_id:
+                                matchedStock?.id ??
+                                null,
+                              is_received:
+                                Boolean(size),
+                              size:
+                                size || null
+                            }
+                          ]
+                        });
                       }
-
-                      setFormData({
-                        ...formData,
-                        equipments:
-                          formData.equipments?.map(
-                            (equipment) =>
-                              equipment.id ===
-                              sabukEquipment.id
-                                ? {
-                                    ...equipment,
-                                    size:
-                                      size ||
-                                      null
-                                  }
-                                : equipment
-                          )
-                      });
                     }}
                     className={`h-12 w-full sm:w-1/2 rounded-xl border border-gray-300 bg-white px-4 text-sm ${
                       getEquipment(

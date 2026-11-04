@@ -12,6 +12,11 @@ const isCurrencyColumn = (keyName: string) => {
          lower.includes('bayar') || lower.includes('terbayar');
 };
 
+const isNonSummableColumn = (keyName: string) => {
+  const lower = keyName.toLowerCase();
+  return lower.includes('usia') || lower.includes('umur') || lower === 'age' || lower === 'no' || lower === 'no.';
+};
+
 const isCenterColumn = (keyName: string) => {
   const lower = keyName.toLowerCase();
   return lower === 'no' || lower === 'id' || lower === 'no.' || lower.includes('id ') ||
@@ -206,7 +211,9 @@ export async function exportToExcel(data: any[], filename: string, title?: strin
         } else {
           cell.numFmt = '#,##0';
         }
-        columnSums[colIndex + 1] = (columnSums[colIndex + 1] || 0) + rawVal;
+        if (!isNonSummableColumn(key)) {
+          columnSums[colIndex + 1] = (columnSums[colIndex + 1] || 0) + rawVal;
+        }
       } else if (rawVal !== null && rawVal !== undefined) {
         const strVal = String(rawVal);
         cell.value = strVal;
@@ -380,7 +387,9 @@ export async function exportMasterWorkbookToExcel(
           } else {
             cell.numFmt = '#,##0';
           }
-          columnSums[colIndex + 1] = (columnSums[colIndex + 1] || 0) + rawVal;
+          if (!isNonSummableColumn(key)) {
+            columnSums[colIndex + 1] = (columnSums[colIndex + 1] || 0) + rawVal;
+          }
         } else if (rawVal !== null && rawVal !== undefined) {
           const strVal = String(rawVal);
           cell.value = strVal;

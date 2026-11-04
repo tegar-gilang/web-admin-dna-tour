@@ -987,7 +987,9 @@ export const useStore = create<StoreState>((set) => ({
     }
 
     const updatedPilgrimsList = state.pilgrims.map(p => p.id === id ? updatedPilgrim : p);
-    const syncedPilgrims = syncPilgrimPaymentsWithTxs(updatedPilgrimsList, updatedTxs);
+    const syncedPilgrims = updates.remainingCost !== undefined
+      ? updatedPilgrimsList
+      : syncPilgrimPaymentsWithTxs(updatedPilgrimsList, updatedTxs);
 
     // Sync group pilgrim counts
     const updatedGroups = state.groups.map(g => {
