@@ -738,6 +738,65 @@ export default function Registration() {
   // SAVE REGISTRATION
   // ==========================================
 
+  const normalizePilgrimIdForCompare = (
+    val?: string | null
+  ) => {
+    if (!val || !val.trim()) return '';
+    return formatJamaahId({
+      pilgrimId: val.trim()
+    }).toLowerCase();
+  };
+
+  const isPilgrimIdDuplicate = useMemo(() => {
+    const rawInput = formData.pilgrimId?.trim();
+    if (!rawInput) return false;
+    const normalizedInput =
+      normalizePilgrimIdForCompare(rawInput);
+
+    return pilgrims.some((p) => {
+      if (editingPilgrim && p.id === editingPilgrim.id) {
+        return false;
+      }
+      const existingRaw = p.pilgrimId?.trim();
+      if (!existingRaw) return false;
+      return (
+        existingRaw.toLowerCase() ===
+          rawInput.toLowerCase() ||
+        normalizePilgrimIdForCompare(existingRaw) ===
+          normalizedInput
+      );
+    });
+  }, [formData.pilgrimId, pilgrims, editingPilgrim]);
+
+  const isKtpDuplicate = useMemo(() => {
+    const rawKtp = formData.ktp?.trim();
+    if (
+      !rawKtp ||
+      rawKtp === '-' ||
+      rawKtp === '0000000000000000'
+    ) {
+      return false;
+    }
+
+    return pilgrims.some((p) => {
+      if (editingPilgrim && p.id === editingPilgrim.id) {
+        return false;
+      }
+      const existingKtp = p.ktp?.trim();
+      if (
+        !existingKtp ||
+        existingKtp === '-' ||
+        existingKtp === '0000000000000000'
+      ) {
+        return false;
+      }
+      return (
+        existingKtp.toLowerCase() ===
+        rawKtp.toLowerCase()
+      );
+    });
+  }, [formData.ktp, pilgrims, editingPilgrim]);
+
   const savePilgrim = async () => {
     if (
       !formData.pilgrimId ||
@@ -745,6 +804,33 @@ export default function Registration() {
     ) {
       toast(
         'ID Jamaah wajib diisi.',
+        'error'
+      );
+      return;
+    }
+
+    if (
+      isPilgrimIdDuplicate &&
+      isKtpDuplicate
+    ) {
+      toast(
+        'ID Jamaah dan No. KTP/NIK telah digunakan.',
+        'error'
+      );
+      return;
+    }
+
+    if (isPilgrimIdDuplicate) {
+      toast(
+        'ID Jamaah telah digunakan.',
+        'error'
+      );
+      return;
+    }
+
+    if (isKtpDuplicate) {
+      toast(
+        'No. KTP/NIK telah digunakan.',
         'error'
       );
       return;
@@ -2755,13 +2841,31 @@ export default function Registration() {
                               e.target.value
                           })
                         }
+                        onBlur={() => {
+                          if (isPilgrimIdDuplicate) {
+                            toast(
+                              'ID Jamaah telah digunakan.',
+                              'error'
+                            );
+                          }
+                        }}
                         placeholder="Cth. JAMAAH001"
-                        className={`h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base ${
+                        className={`h-12 sm:h-13 rounded-2xl bg-white text-base ${
+                          isPilgrimIdDuplicate
+                            ? 'border-red-500 focus:ring-red-500 focus:border-red-500'
+                            : 'border-gray-300 focus:ring-[#00a859] focus:border-[#00a859]'
+                        } ${
                           formData.pilgrimId
                             ? 'font-bold text-gray-900'
                             : 'font-normal text-gray-400'
-                        } placeholder:text-gray-400 placeholder:font-normal px-4 sm:px-5 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859]`}
+                        } placeholder:text-gray-400 placeholder:font-normal px-4 sm:px-5 focus:ring-1`}
                       />
+                      {isPilgrimIdDuplicate && (
+                        <p className="mt-1.5 flex items-center gap-1.5 text-xs font-semibold text-red-600">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                          ID Jamaah telah digunakan.
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -2840,13 +2944,31 @@ export default function Registration() {
                               e.target.value
                           })
                         }
+                        onBlur={() => {
+                          if (isKtpDuplicate) {
+                            toast(
+                              'No. KTP/NIK telah digunakan.',
+                              'error'
+                            );
+                          }
+                        }}
                         placeholder="16 Digit NIK KTP"
-                        className={`h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base ${
+                        className={`h-12 sm:h-13 rounded-2xl bg-white text-base ${
+                          isKtpDuplicate
+                            ? 'border-red-500 focus:ring-red-500 focus:border-red-500'
+                            : 'border-gray-300 focus:ring-[#00a859] focus:border-[#00a859]'
+                        } ${
                           formData.ktp
                             ? 'font-bold text-gray-900'
                             : 'font-normal text-gray-400'
-                        } placeholder:text-gray-400 placeholder:font-normal px-4 sm:px-5 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859]`}
+                        } placeholder:text-gray-400 placeholder:font-normal px-4 sm:px-5 focus:ring-1`}
                       />
+                      {isKtpDuplicate && (
+                        <p className="mt-1.5 flex items-center gap-1.5 text-xs font-semibold text-red-600">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                          No. KTP / NIK telah digunakan.
+                        </p>
+                      )}
                     </div>
                   </div>
 

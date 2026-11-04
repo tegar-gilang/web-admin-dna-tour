@@ -49,13 +49,15 @@ export async function apiClient<T>(
     let errorMessage = `HTTP ${response.status} Error`;
 
     if (data) {
-      if (data.message) {
-        errorMessage = data.message;
-      } else if (data.errors && typeof data.errors === 'object') {
-        const messages = Object.values(data.errors).flat().join(', ');
+      if (data.errors && typeof data.errors === 'object') {
+        const messages = Object.values(data.errors).flat().join(' ');
         if (messages) {
           errorMessage = messages;
+        } else if (data.message) {
+          errorMessage = data.message;
         }
+      } else if (data.message) {
+        errorMessage = data.message;
       }
     }
 
