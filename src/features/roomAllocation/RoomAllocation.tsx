@@ -774,28 +774,28 @@ export default function RoomAllocation() {
 
       {/* Main Controls & Filters Bar */}
       <div className="bg-white border border-gray-200/80 rounded-2xl p-5 shadow-2xs space-y-4 print:hidden">
-        <div className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-4">
+        {/* Row 1: Kloter Filter (Left) & Hotel Location + Hotel Name + Periode (Right) */}
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
           
-          {/* Kloter, Location, Hotel & Period Pickers */}
-          <div className="flex flex-wrap items-center gap-3">
-            
-            {/* Kloter Select */}
-            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 h-10 min-w-[200px] flex-1 sm:flex-none">
-              <Users className="w-4 h-4 text-gray-400 shrink-0" />
-              <select 
-                value={selectedKloter}
-                onChange={(e) => handleKloterChange(e.target.value)}
-                className="w-full bg-transparent border-none text-xs font-bold text-gray-900 focus:outline-none cursor-pointer"
-              >
-                {groups.map(g => (
-                  <option key={g.id} value={g.name}>{g.name} ({g.kloter || g.id})</option>
-                ))}
-                {!groups.some(g => g.name === selectedKloter) && (
-                  <option value={selectedKloter}>{selectedKloter}</option>
-                )}
-              </select>
-            </div>
+          {/* Kloter Select */}
+          <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 h-10 w-full sm:w-[260px] shrink-0">
+            <Users className="w-4 h-4 text-gray-400 shrink-0" />
+            <select 
+              value={selectedKloter}
+              onChange={(e) => handleKloterChange(e.target.value)}
+              className="w-full bg-transparent border-none text-xs font-bold text-gray-900 focus:outline-none cursor-pointer truncate"
+            >
+              {groups.map(g => (
+                <option key={g.id} value={g.name}>{g.name} ({g.kloter || g.id})</option>
+              ))}
+              {!groups.some(g => g.name === selectedKloter) && (
+                <option value={selectedKloter}>{selectedKloter}</option>
+              )}
+            </select>
+          </div>
 
+          {/* Location Toggle, Hotel Name & Period (Sebelah Nama Hotel) */}
+          <div className="flex flex-wrap items-center gap-2.5">
             {/* Location Toggle Button Group */}
             <div className="inline-flex rounded-xl border border-gray-200 bg-gray-100/70 p-0.5 h-10">
               <button
@@ -836,25 +836,29 @@ export default function RoomAllocation() {
               />
             </div>
 
-            {/* Period Input */}
-            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 h-10 w-32 shrink-0">
+            {/* Period Input (Tepat Di Sebelah Nama Hotel) */}
+            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 h-10 min-w-[150px] shrink-0">
               <Calendar className="w-4 h-4 text-gray-400 shrink-0" />
               <Input 
                 value={periodTitle}
                 onChange={(e) => setPeriodTitle(e.target.value)}
-                className="h-8 text-xs font-bold text-gray-900 bg-transparent border-none p-0 focus-visible:ring-0"
+                className="h-8 text-xs font-bold text-gray-900 bg-transparent border-none p-0 focus-visible:ring-0 w-28"
                 placeholder="JULI 2026"
                 title="Edit Periode Bulan/Tahun"
               />
             </div>
           </div>
+        </div>
 
-          {/* Search Box */}
-          <div className="relative w-full xl:w-72">
+        {/* Row 2: Search Box (Di Bawah Filter Kloter) & Category Filter Pills */}
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 pt-3.5 border-t border-gray-100">
+          
+          {/* Search Box - Posisinya tepat di bawah alokasi filter kloter */}
+          <div className="relative w-full sm:w-[260px] shrink-0">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <Input 
               placeholder="Cari penghuni atau no. kamar..." 
-              className="pl-9.5 pr-8 bg-white border-gray-200 text-xs sm:text-sm h-10 rounded-xl focus:border-emerald-500"
+              className="pl-9.5 pr-8 bg-gray-50/70 border-gray-200 text-xs sm:text-sm h-10 rounded-xl focus:border-emerald-500 focus:bg-white"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -867,11 +871,9 @@ export default function RoomAllocation() {
               </button>
             )}
           </div>
-        </div>
 
-        {/* Room Category Tabs / Filter Pills */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-3.5 border-t border-gray-100">
-          <div className="flex flex-wrap items-center gap-2">
+          {/* Room Category Tabs / Filter Pills */}
+          <div className="flex flex-wrap items-center gap-2 overflow-x-auto hide-scrollbar py-0.5">
             <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mr-1">Filter Tipe:</span>
             
             <button
@@ -951,7 +953,7 @@ export default function RoomAllocation() {
             </button>
           </div>
 
-          <div className="text-xs font-medium text-gray-500">
+          <div className="text-xs font-medium text-gray-500 whitespace-nowrap self-end lg:self-center">
             Kloter: <strong className="text-gray-900">{selectedKloter}</strong> &bull; Terdaftar: <strong className="text-gray-900">{groupPilgrims.length} Jamaah</strong>
           </div>
         </div>
