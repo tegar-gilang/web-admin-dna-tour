@@ -872,7 +872,7 @@ export default function RoomAllocation() {
         </div>
 
         {/* Row 3: Filter Tipe 1 Baris Ke Samping (Di Bawah Search) & Info Kloter/Terdaftar Segaris */}
-        <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between gap-3 !mt-8 pt-8 pb-1 border-t border-gray-100">
+        <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between gap-3 !mt-8 pb-1">
           
           {/* Room Category Tabs / Filter Pills - 1 Baris Ke Samping */}
           <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar w-full xl:w-auto py-1">
