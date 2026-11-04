@@ -301,6 +301,23 @@ export default function Groups() {
       return;
     }
 
+    // Validasi duplikat Form ID / ID Kloter
+    if (formData.formId && formData.formId.trim()) {
+      const targetFormId = formData.formId.trim().toLowerCase();
+      const currentKloterId = editingGroup?.backendId || editingGroup?.id;
+      const isDuplicate = groups.some((g) => {
+        const isSelf = currentKloterId && (g.backendId === currentKloterId || g.id === currentKloterId);
+        if (isSelf) return false;
+        const gFormId = (g.formId || g.id || '').trim().toLowerCase();
+        return gFormId === targetFormId;
+      });
+
+      if (isDuplicate) {
+        toast("ID Kloter sudah digunakan. Silakan gunakan ID lain.", "error");
+        return;
+      }
+    }
+
     if (formData.departureDate && formData.returnDate && formData.departureDate > formData.returnDate) {
       toast("Tanggal kepulangan harus sama atau setelah tanggal keberangkatan.", "error");
       return;
@@ -501,10 +518,14 @@ export default function Groups() {
 
       setIsFormModalOpen(false);
     } catch (error) {
-      const message =
+      let message =
         error instanceof Error
           ? error.message
           : "Gagal menyimpan data kloter.";
+
+      if (typeof message === 'string' && (message.toLowerCase().includes("already been taken") || message.toLowerCase().includes("the code has"))) {
+        message = "ID Kloter sudah digunakan. Silakan gunakan ID lain.";
+      }
 
       toast(message, "error");
     }

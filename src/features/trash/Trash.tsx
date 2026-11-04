@@ -3,6 +3,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Trash2, RefreshCcw, AlertTriangle, FileBox, ShieldAlert, ChevronLeft, ChevronRight, Search, X, Clock, Calendar, Loader2 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/Dialog';
 import { toast } from '@/lib/toast';
 import { useNavigate } from 'react-router-dom';
 import { trashService, TrashItemBackend, TrashResponse } from '@/core/services/trashService';
@@ -24,6 +25,8 @@ export default function Trash() {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [restoringId, setRestoringId] = useState<string | null>(null);
+  const [deletingItem, setDeletingItem] = useState<TrashItemBackend | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchTrash = useCallback(async () => {
     setIsLoading(true);
@@ -62,6 +65,22 @@ export default function Trash() {
       toast(err?.message || "Gagal memulihkan data dari server.", "error");
     } finally {
       setRestoringId(null);
+    }
+  };
+
+  const handleForceDelete = async () => {
+    if (!deletingItem || isDeleting) return;
+    setIsDeleting(true);
+    try {
+      const res = await trashService.forceDeleteTrashItem(deletingItem.type_key, deletingItem.original_id);
+      toast(res.message || `${deletingItem.name} berhasil dihapus permanen.`, "success");
+      setDeletingItem(null);
+      await fetchTrash();
+    } catch (err: any) {
+      console.error("Gagal menghapus permanen:", err);
+      toast(err?.message || "Gagal menghapus data permanen dari server.", "error");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -338,7 +357,7 @@ export default function Trash() {
                     variant="outline" 
                     className="flex-1 sm:flex-none h-9 text-xs font-bold text-gray-700 border-gray-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 shadow-2xs transition-colors cursor-pointer"
                     onClick={() => handleRestore(item)}
-                    disabled={restoringId === item.id}
+                    disabled={restoringId === item.id || isDeleting}
                   >
                     {restoringId === item.id ? (
                       <>
@@ -351,6 +370,16 @@ export default function Trash() {
                         Kembalikan
                       </>
                     )}
+                  </Button>
+
+                  <Button 
+                    variant="outline" 
+                    className="flex-1 sm:flex-none h-9 text-xs font-bold text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300 shadow-2xs transition-colors cursor-pointer"
+                    onClick={() => setDeletingItem(item)}
+                    disabled={restoringId === item.id || isDeleting}
+                  >
+                    <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                    Hapus Permanen
                   </Button>
                 </div>
               </div>
@@ -421,6 +450,57 @@ export default function Trash() {
           </div>
         )}
       </Card>
+
+      {/* Modal Konfirmasi Hapus Permanen */}
+      <Dialog open={Boolean(deletingItem)} onOpenChange={(open) => !open && !isDeleting && setDeletingItem(null)}>
+        <DialogContent className="max-w-md bg-white rounded-3xl p-6 sm:p-7 shadow-xl border border-gray-200">
+          <DialogHeader className="text-left space-y-2">
+            <div className="w-12 h-12 rounded-2xl bg-red-50 border border-red-200 flex items-center justify-center text-red-600 mb-2">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <DialogTitle className="text-lg sm:text-xl font-bold text-gray-900 tracking-tight">
+              Hapus Data Permanen?
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="py-2 space-y-2 text-left">
+            <p className="text-sm font-semibold text-gray-800">
+              Apakah Anda yakin ingin menghapus permanen data <strong className="text-red-600">"{deletingItem?.name}"</strong> ({deletingItem?.type})?
+            </p>
+            <p className="text-xs text-gray-500 leading-relaxed">
+              Tindakan ini tidak dapat dibatalkan. Record dan seluruh riwayat yang terkait akan dihapus secara permanen dari server database.
+            </p>
+          </div>
+
+          <DialogFooter className="flex flex-row justify-end gap-2.5 pt-4">
+            <Button
+              variant="outline"
+              disabled={isDeleting}
+              onClick={() => setDeletingItem(null)}
+              className="rounded-xl h-10 px-4 text-xs font-bold border-gray-300 text-gray-700 hover:bg-gray-50 cursor-pointer"
+            >
+              Batal
+            </Button>
+            <Button
+              disabled={isDeleting}
+              onClick={handleForceDelete}
+              className="rounded-xl h-10 px-5 text-xs font-bold bg-red-600 hover:bg-red-700 text-white shadow-xs cursor-pointer"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                  Menghapus...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                  Ya, Hapus Permanen
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

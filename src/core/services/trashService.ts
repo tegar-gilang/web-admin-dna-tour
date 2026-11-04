@@ -54,6 +54,15 @@ export const trashService = {
       method: 'POST',
     });
   },
+
+  /**
+   * Menghapus record secara permanen dari Riwayat Hapus
+   */
+  async forceDeleteTrashItem(typeKey: string, originalId: string): Promise<{ message: string }> {
+    return await apiClient<{ message: string }>(`/trash/${typeKey}/${originalId}/force-delete`, {
+      method: 'DELETE',
+    });
+  },
 };
 
 export default trashService;
