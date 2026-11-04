@@ -85,7 +85,7 @@ export default function Pilgrims() {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<
-    'all' | 'male' | 'female' | 'elderly' | 'unassigned'
+    'all' | 'male' | 'female' | 'elderly' | 'unassigned' | 'passport'
   >('all');
 
   const [showFilters, setShowFilters] = useState(false);
@@ -211,8 +211,9 @@ export default function Pilgrims() {
     // - Tie-breaker: jika created_at identik atau tidak tersedia, urutkan deterministik
     const map = new Map<string, Pilgrim>();
     for (const [pilgrimId, list] of groupsByPilgrim.entries()) {
+      let chosen: Pilgrim;
       if (list.length === 1) {
-        map.set(pilgrimId, list[0]);
+        chosen = list[0];
       } else {
         const sorted = [...list].sort((a, b) => {
           const timeA = a.createdAt ? new Date(a.createdAt).getTime() : (a.registrationDate ? new Date(a.registrationDate).getTime() : 0);
@@ -223,11 +224,26 @@ export default function Pilgrims() {
           // Tie-breaker konsisten: urutkan descending berdasarkan formId / id
           return (b.formId || b.id || '').localeCompare(a.formId || a.id || '');
         });
-        map.set(pilgrimId, sorted[0]);
+        chosen = sorted[0];
+      }
+      map.set(pilgrimId, chosen);
+      map.set(pilgrimId.toLowerCase(), chosen);
+      const formattedKey = formatJamaahId({ pilgrimId }).toLowerCase();
+      if (formattedKey && formattedKey !== '-') {
+        map.set(formattedKey, chosen);
       }
     }
     return map;
   }, [registrations]);
+
+  const getMatchedRegistration = (jamaahId: string): Pilgrim | undefined => {
+    if (!jamaahId) return undefined;
+    return (
+      registrationLookup.get(jamaahId) ||
+      registrationLookup.get(jamaahId.toLowerCase()) ||
+      registrationLookup.get(formatJamaahId({ loginId: jamaahId }).toLowerCase())
+    );
+  };
 
   const getKerudungStatus = (
     jamaahId: string,
@@ -236,7 +252,7 @@ export default function Pilgrims() {
     if (isLoadingRegistrations || registrationError || registrations.length === 0) {
       return '-';
     }
-    const reg = registrationLookup.get(jamaahId);
+    const reg = getMatchedRegistration(jamaahId);
     if (!reg) {
       return '-';
     }
@@ -245,6 +261,39 @@ export default function Pilgrims() {
       return '-';
     }
     return eq.is_received ? 'Sudah' : 'Belum';
+  };
+
+  const getPilgrimPackage = (p: Pilgrim): string => {
+    if (p.umrahPackage && p.umrahPackage.trim() && p.umrahPackage !== '-') {
+      return p.umrahPackage.trim();
+    }
+    if (p.packageId) {
+      const matchedPkg = packages.find((pkg) => pkg.id === p.packageId);
+      if (matchedPkg?.name) {
+        return matchedPkg.name.trim();
+      }
+    }
+    const reg = getMatchedRegistration(p.id);
+    if (reg?.umrahPackage && reg.umrahPackage.trim() && reg.umrahPackage !== '-') {
+      return reg.umrahPackage.trim();
+    }
+    return 'Yamani';
+  };
+
+  const getPilgrimPassport = (p: Pilgrim): string => {
+    if (p.passport && p.passport.trim() && p.passport.trim() !== '-') {
+      return p.passport.trim();
+    }
+    const reg = getMatchedRegistration(p.id);
+    if (reg?.passport && reg.passport.trim() && reg.passport.trim() !== '-') {
+      return reg.passport.trim();
+    }
+    return '';
+  };
+
+  const isPassportVerified = (p: Pilgrim): boolean => {
+    const pass = getPilgrimPassport(p);
+    return Boolean(pass && pass.length > 3);
   };
 
   // ==========================================
@@ -273,8 +322,38 @@ export default function Pilgrims() {
   ).length;
 
   const totalPassportReady = pilgrims.filter(
-    (p) => p.passport && p.passport.trim().length > 3
+    (p) => isPassportVerified(p)
   ).length;
+
+  const uniqueFilterPackages = useMemo(() => {
+    const seen = new Set<string>();
+    const list: string[] = [];
+
+    const addOption = (name?: string | null) => {
+      if (!name) return;
+      const trimmed = name.trim();
+      if (!trimmed || trimmed === '-') return;
+      const lower = trimmed.toLowerCase();
+      if (!seen.has(lower)) {
+        seen.add(lower);
+        list.push(trimmed);
+      }
+    };
+
+    pilgrims.forEach((p) => {
+      addOption(getPilgrimPackage(p));
+    });
+
+    packages.forEach((pkg) => {
+      addOption(pkg.name);
+    });
+
+    if (list.length === 0) {
+      ['Yamani', 'Raudhah', 'Multazam'].forEach(addOption);
+    }
+
+    return list;
+  }, [pilgrims, packages, registrationLookup]);
 
   const uniqueDepartureDates = useMemo(() => {
     const dates = new Set<string>();
@@ -328,12 +407,22 @@ export default function Pilgrims() {
         return false;
       }
 
+      if (
+        activeTab === 'passport' &&
+        !isPassportVerified(p)
+      ) {
+        return false;
+      }
+
+      const resolvedPassport = getPilgrimPassport(p);
+      const resolvedPackage = getPilgrimPackage(p);
+
       const matchesSearch =
         p.name
           .toLowerCase()
           .includes(searchTerm.toLowerCase()) ||
-        (p.passport &&
-          p.passport
+        (resolvedPassport &&
+          resolvedPassport
             .toLowerCase()
             .includes(searchTerm.toLowerCase())) ||
         p.id
@@ -346,10 +435,15 @@ export default function Pilgrims() {
         (p.group &&
           p.group
             .toLowerCase()
+            .includes(searchTerm.toLowerCase())) ||
+        (resolvedPackage &&
+          resolvedPackage
+            .toLowerCase()
             .includes(searchTerm.toLowerCase()));
 
       const matchesPackage = filterPackage
-        ? p.umrahPackage === filterPackage
+        ? resolvedPackage.toLowerCase() === filterPackage.toLowerCase() ||
+          resolvedPackage.toLowerCase().includes(filterPackage.toLowerCase())
         : true;
 
       const matchesGroup = filterGroup
@@ -366,12 +460,9 @@ export default function Pilgrims() {
       let matchesPassport = true;
 
       if (filterPassportStatus === 'ready') {
-        matchesPassport = Boolean(
-          p.passport && p.passport.trim().length > 3
-        );
+        matchesPassport = isPassportVerified(p);
       } else if (filterPassportStatus === 'pending') {
-        matchesPassport =
-          !p.passport || p.passport.trim().length <= 3;
+        matchesPassport = !isPassportVerified(p);
       }
 
       return (
@@ -384,6 +475,8 @@ export default function Pilgrims() {
     });
   }, [
     pilgrims,
+    packages,
+    registrationLookup,
     activeTab,
     searchTerm,
     filterPackage,
@@ -486,8 +579,16 @@ export default function Pilgrims() {
   // ==========================================
 
   const openDetailModal = (p: Pilgrim) => {
-    setSelectedPilgrim(p);
-    setFormData({ ...p });
+    const resolvedPackage = getPilgrimPackage(p);
+    const resolvedPassport = getPilgrimPassport(p);
+    const enrichedPilgrim = {
+      ...p,
+      passport: resolvedPassport || p.passport,
+      umrahPackage: resolvedPackage || p.umrahPackage,
+    };
+
+    setSelectedPilgrim(enrichedPilgrim);
+    setFormData(enrichedPilgrim);
 
     setModifiedDates({
       departureDate: true,
@@ -541,18 +642,33 @@ export default function Pilgrims() {
   // ==========================================
 
   const openEditModal = (p: Pilgrim) => {
-    setSelectedPilgrim(p);
+    const resolvedPackage = getPilgrimPackage(p);
+    const resolvedPassport = getPilgrimPassport(p);
+    const matchedPkg = packages.find(
+      (pkg) =>
+        pkg.id === p.packageId ||
+        pkg.name.trim().toLowerCase() === resolvedPackage.toLowerCase()
+    );
 
-    let kloterBackendId = p.kloterId;
-    if (!kloterBackendId && p.group) {
-      const foundGrp = groups.find(g => g.name === p.group || g.id === p.group);
+    const enrichedPilgrim = {
+      ...p,
+      passport: resolvedPassport || p.passport,
+      packageId: p.packageId || matchedPkg?.id || '',
+      umrahPackage: resolvedPackage || matchedPkg?.name || p.umrahPackage,
+    };
+
+    setSelectedPilgrim(enrichedPilgrim);
+
+    let kloterBackendId = enrichedPilgrim.kloterId;
+    if (!kloterBackendId && enrichedPilgrim.group) {
+      const foundGrp = groups.find(g => g.name === enrichedPilgrim.group || g.id === enrichedPilgrim.group);
       kloterBackendId = foundGrp?.backendId || foundGrp?.id || null;
     }
     const primaryTL = kloterBackendId ? getPrimaryTourLeader(kloterBackendId, tourLeaders) : null;
 
     setFormData({
-      ...p,
-      tourLeader: primaryTL ? primaryTL.name : '',
+      ...enrichedPilgrim,
+      tourLeader: primaryTL ? primaryTL.name : enrichedPilgrim.tourLeader || '',
     });
 
     setModifiedDates({
@@ -858,14 +974,14 @@ export default function Pilgrims() {
             'ID Jamaah': formatJamaahId({ loginId: p.id }),
             'Nama Lengkap': p.name,
             'NIK': p.ktp || '-',
-            'No. Paspor': p.passport || '-',
+            'No. Paspor': getPilgrimPassport(p) || '-',
             'No. Visa': p.visaNumber || '-',
             'Kewarganegaraan': p.nationality || 'Indonesia',
             'Jenis Kelamin': p.gender || '-',
             'Usia': p.age ?? '-',
             'No. HP': p.phone || '-',
             'Kontak Darurat': p.emergencyContact || '-',
-            'Paket Umrah': p.umrahPackage || '-',
+            'Paket Umrah': getPilgrimPackage(p) || '-',
             'Kloter / Group': p.group || '-',
             'Tour Leader': p.tourLeader || '-',
             'Mutawif Local': (() => { const grp = groups.find(g => g.backendId === p.kloterId || g.id === p.kloterId || g.name === p.group); return grp?.mutawifs?.length ? grp.mutawifs.map(m => m.name).join(', ') : (p.mutawifLocal || '-'); })(),
@@ -1039,10 +1155,14 @@ export default function Pilgrims() {
 
         <Card
           onClick={() => {
-            setActiveTab('all');
+            setActiveTab('passport');
             setCurrentPage(1);
           }}
-          className="rounded-2xl border border-gray-200/80 bg-white shadow-2xs cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-sm active:scale-[0.98]"
+          className={`rounded-2xl border bg-white shadow-2xs cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm active:scale-[0.98] ${
+            activeTab === 'passport'
+              ? 'border-blue-600 ring-2 ring-blue-600/20 bg-blue-50/20'
+              : 'border-gray-200/80 hover:border-gray-300'
+          }`}
         >
           <CardContent className="p-5 flex flex-col justify-between h-full gap-3">
             <div className="flex justify-between items-start">
@@ -1079,6 +1199,7 @@ export default function Pilgrims() {
               ['female', 'Perempuan', totalFemale],
               ['elderly', 'Lansia (≥60)', totalElderly],
               ['unassigned', 'Belum Ada Kloter', totalUnassigned],
+              ['passport', 'Paspor Terverifikasi', totalPassportReady],
             ].map(([key, label, count]) => (
               <button
                 key={key}
@@ -1090,6 +1211,7 @@ export default function Pilgrims() {
                       | 'female'
                       | 'elderly'
                       | 'unassigned'
+                      | 'passport'
                   );
                   setCurrentPage(1);
                 }}
@@ -1198,9 +1320,11 @@ export default function Pilgrims() {
                 }}
               >
                 <option value="">Semua Paket</option>
-                <option value="Yamani">Yamani</option>
-                <option value="Raudhah">Raudhah</option>
-                <option value="Multazam">Multazam</option>
+                {uniqueFilterPackages.map((pkgName) => (
+                  <option key={pkgName} value={pkgName}>
+                    {pkgName}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -1510,6 +1634,15 @@ export default function Pilgrims() {
                                     }
                                   </span>
                                 )}
+
+                                {isPassportVerified(
+                                  pilgrim
+                                ) && (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#2563eb] bg-[#edf5ff] px-2 py-0.5 rounded-full border border-blue-200 whitespace-nowrap">
+                                    <FileCheck className="w-3 h-3 shrink-0" />
+                                    Paspor: {getPilgrimPassport(pilgrim)}
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -1553,8 +1686,9 @@ export default function Pilgrims() {
 
                         <TableCell className="py-4 whitespace-nowrap">
                           <span className="inline-flex items-center px-3.5 py-1.5 rounded-full text-xs font-bold text-[#782820] bg-[#fcedea] border border-[#f5d0cb] shadow-2xs tracking-wide uppercase whitespace-nowrap shrink-0">
-                            {pilgrim.umrahPackage ||
-                              'Yamani'}
+                            {getPilgrimPackage(
+                              pilgrim
+                            )}
                           </span>
                         </TableCell>
 
@@ -1858,8 +1992,8 @@ export default function Pilgrims() {
                   : '-';
 
               const passportFormatted =
-                activePilgrim?.passport
-                  ? activePilgrim.passport
+                activePilgrim
+                  ? getPilgrimPassport(activePilgrim) || '-'
                   : '-';
 
               const visaFormatted =
@@ -1902,8 +2036,9 @@ export default function Pilgrims() {
                   : activePilgrim?.mutawifLocal || '-';
 
               const packageFormatted =
-                activePilgrim?.umrahPackage ||
-                '-';
+                activePilgrim
+                  ? getPilgrimPackage(activePilgrim) || '-'
+                  : '-';
 
               const hotelFormatted =
                 activePilgrim?.hotelMakkah ||

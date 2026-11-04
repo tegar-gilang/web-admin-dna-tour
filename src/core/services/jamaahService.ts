@@ -39,6 +39,11 @@ export type BackendJamaah = {
   kloter?: {
     id: string;
     name: string;
+    package_id?: string | null;
+    package?: {
+      id: string;
+      name: string;
+    } | null;
   } | null;
 };
 
@@ -141,8 +146,16 @@ export const mapJamaahToPilgrim = (
 
     group: jamaah.kloter?.name ?? '',
     kloterId: jamaah.kloter?.id ?? '',
-    packageId: jamaah.package?.id ?? jamaah.package_id ?? null,
-    umrahPackage: jamaah.package?.name ?? '',
+    packageId:
+      jamaah.package?.id ??
+      jamaah.package_id ??
+      jamaah.kloter?.package?.id ??
+      jamaah.kloter?.package_id ??
+      null,
+    umrahPackage:
+      jamaah.package?.name ??
+      jamaah.kloter?.package?.name ??
+      '',
 
     tourLeader: jamaah.tour_leader ?? '',
     mutawifLocal: jamaah.mutawif_local ?? '',
