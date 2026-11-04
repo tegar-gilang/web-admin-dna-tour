@@ -1790,7 +1790,10 @@ if (isLoadingGroup) {
                     const isAssigned = (tl.kloters || []).length > 0;
                     const currentKloterId = group.backendId || group.id;
                     const isAssignedToThis = currentKloterId ? (tl.kloters || []).some(k => k.id === currentKloterId) : false;
-                    const statusBadge = isAssignedToThis ? ' (Saat Ini)' : isAssigned ? ' (Tugas Kloter Lain)' : ` (${tl.status})`;
+                    const tlStatusDisplay = (tl.status?.toLowerCase() === 'resting' || tl.status?.toLowerCase() === 'istirahat')
+                      ? 'Istirahat/Off'
+                      : tl.status;
+                    const statusBadge = isAssignedToThis ? ' (Saat Ini)' : isAssigned ? ' (Tugas Kloter Lain)' : ` (${tlStatusDisplay})`;
 
                     return (
                       <option key={tl.id} value={tlVal}>
@@ -1818,7 +1821,10 @@ if (isLoadingGroup) {
                     const isAssigned = (mw.kloters || []).length > 0;
                     const currentKloterId = group.backendId || group.id;
                     const isAssignedToThis = currentKloterId ? (mw.kloters || []).some(k => k.id === currentKloterId) : false;
-                    const statusBadge = isAssignedToThis ? ' (Saat Ini)' : isAssigned ? ' (Tugas Kloter Lain)' : ` (${mw.status})`;
+                    const mwStatusDisplay = (mw.status?.toLowerCase() === 'resting' || mw.status?.toLowerCase() === 'istirahat')
+                      ? 'Istirahat/Off'
+                      : mw.status;
+                    const statusBadge = isAssignedToThis ? ' (Saat Ini)' : isAssigned ? ' (Tugas Kloter Lain)' : ` (${mwStatusDisplay})`;
 
                     return (
                       <option key={mw.id} value={mwVal}>
