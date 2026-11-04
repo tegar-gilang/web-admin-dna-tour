@@ -100,18 +100,25 @@ export default function Groups() {
 
   // Stats Calculations
   const totalGroups = groups.length;
-  const activeGroups = groups.filter(g => g.status === 'Active' || g.status === 'Aktif').length;
-  const draftGroups = groups.filter(g => g.status === 'Draft').length;
-  const archivedGroups = groups.filter(g => g.status === 'Archived' || g.status === 'Diarsipkan').length;
+  const activeGroups = groups.filter(g => {
+    const s = (g.status || '').toLowerCase();
+    return s === 'active' || s === 'aktif';
+  }).length;
+  const draftGroups = groups.filter(g => (g.status || '').toLowerCase() === 'draft').length;
+  const archivedGroups = groups.filter(g => {
+    const s = (g.status || '').toLowerCase();
+    return s === 'archived' || s === 'diarsipkan';
+  }).length;
   const totalPilgrimsInGroups = pilgrims.filter(p => p.group && p.group !== '-' && p.group !== 'Belum ada kloter').length;
   const totalAssignedStaff = tourLeaders.filter(t => t.group && t.group !== '-').length + mutawifs.filter(m => m.group && m.group !== '-').length;
 
   const filteredGroups = useMemo(() => {
     return groups.filter(g => {
+      const statusLower = (g.status || '').toLowerCase();
       // Tab filter
-      if (activeTab === 'active' && !(g.status === 'Active' || g.status === 'Aktif')) return false;
-      if (activeTab === 'draft' && g.status !== 'Draft') return false;
-      if (activeTab === 'archived' && !(g.status === 'Archived' || g.status === 'Diarsipkan')) return false;
+      if (activeTab === 'active' && !(statusLower === 'active' || statusLower === 'aktif')) return false;
+      if (activeTab === 'draft' && statusLower !== 'draft') return false;
+      if (activeTab === 'archived' && !(statusLower === 'archived' || statusLower === 'diarsipkan')) return false;
 
       const targetId = g.backendId || g.id;
       const assignedTLs = getKloterTourLeaders(targetId, tourLeaders);
@@ -283,8 +290,17 @@ export default function Groups() {
       : (mutawifs.find(m => (m.kloters || []).some(k => k.id === targetId))?.backendId ||
          (g.mutawif && g.mutawif !== '-' ? g.mutawif : ''));
 
+    const rawStatus = (g.status || '').toLowerCase();
+    const initialStatus =
+      rawStatus === 'archived' || rawStatus === 'diarsipkan'
+        ? 'Archived'
+        : rawStatus === 'draft'
+        ? 'Draft'
+        : 'Active';
+
     setFormData({
       ...g,
+      status: initialStatus,
       formId: g.formId || (g.id !== g.backendId ? g.id : ''),
       kloter: g.kloter || '',
       departureDate: g.departureDate ? g.departureDate.substring(0, 10) : '',
@@ -379,22 +395,26 @@ export default function Groups() {
           return;
         }
 
+        const statusLower = (formData.status || '').toLowerCase();
+        const backendStatus: 'draft' | 'active' | 'archived' =
+          statusLower === 'archived' || statusLower === 'diarsipkan'
+            ? 'archived'
+            : statusLower === 'active' || statusLower === 'aktif'
+            ? 'active'
+            : 'draft';
+
         const updatePayload: Record<string, any> = {
           name: formData.name.trim(),
           flight_code: formData.kloter?.trim() || null,
           departure_date: formData.departureDate || null,
           return_date: formData.returnDate || null,
-          status:
-            formData.status === 'Active' || formData.status === 'Aktif'
-              ? 'active'
-              : formData.status === 'Archived' || formData.status === 'Diarsipkan'
-              ? 'archived'
-              : 'draft',
+          status: backendStatus,
           tour_leader: tlName,
           mutawif_local: mwName,
         };
 
-        if (formData.formId && formData.formId.trim()) {
+        const currentOriginalCode = (editingGroup.formId || (editingGroup.id !== editingGroup.backendId ? editingGroup.id : '')).trim();
+        if (formData.formId && formData.formId.trim() && formData.formId.trim() !== currentOriginalCode) {
           updatePayload.code = formData.formId.trim();
         }
 
@@ -462,12 +482,14 @@ export default function Groups() {
           name: formData.name,
           code: formData.formId || null,
           flight_code: formData.kloter || null,
-          status:
-            formData.status === 'Active'
-              ? 'active'
-              : formData.status === 'Archived'
+          status: (() => {
+            const s = (formData.status || '').toLowerCase();
+            return s === 'archived' || s === 'diarsipkan'
               ? 'archived'
-              : 'draft',
+              : s === 'active' || s === 'aktif'
+              ? 'active'
+              : 'draft';
+          })(),
           tour_leader: tlName,
           mutawif_local: mwName,
           package_id: null,
@@ -957,13 +979,17 @@ export default function Groups() {
                     </TableCell>
                     <TableCell className="py-4 whitespace-nowrap">
                       <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase border shadow-2xs ${
-                        group.status === 'Active' || group.status === 'Aktif'
+                        (group.status || '').toLowerCase() === 'active' || (group.status || '').toLowerCase() === 'aktif'
                           ? 'text-emerald-800 bg-emerald-50 border-emerald-300'
-                          : group.status === 'Draft'
+                          : (group.status || '').toLowerCase() === 'draft'
                           ? 'text-gray-700 bg-gray-100 border-gray-300'
                           : 'text-amber-800 bg-amber-50 border-amber-300'
                       }`}>
-                        {group.status === 'Active' || group.status === 'Aktif' ? 'Aktif' : group.status}
+                        {(group.status || '').toLowerCase() === 'active' || (group.status || '').toLowerCase() === 'aktif'
+                          ? 'Aktif'
+                          : (group.status || '').toLowerCase() === 'archived' || (group.status || '').toLowerCase() === 'diarsipkan'
+                          ? 'Diarsipkan'
+                          : 'Draft'}
                       </span>
                     </TableCell>
                     <TableCell className="text-right pr-6 py-4 whitespace-nowrap">
@@ -1291,7 +1317,13 @@ export default function Groups() {
                     </label>
                     <div className="sm:col-span-8">
                       <select 
-                        value={formData.status || 'Active'}
+                        value={
+                          (formData.status || '').toLowerCase() === 'archived' || (formData.status || '').toLowerCase() === 'diarsipkan'
+                            ? 'Archived'
+                            : (formData.status || '').toLowerCase() === 'draft'
+                            ? 'Draft'
+                            : 'Active'
+                        }
                         onChange={(e) => setFormData({...formData, status: e.target.value as any})}
                         className="h-12 sm:h-13 w-full rounded-2xl border border-gray-300 bg-white px-4 sm:px-5 text-base font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859] cursor-pointer"
                       >

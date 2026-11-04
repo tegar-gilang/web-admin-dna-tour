@@ -59,9 +59,25 @@ export const trashService = {
    * Menghapus record secara permanen dari Riwayat Hapus
    */
   async forceDeleteTrashItem(typeKey: string, originalId: string): Promise<{ message: string }> {
-    return await apiClient<{ message: string }>(`/trash/${typeKey}/${originalId}/force-delete`, {
-      method: 'DELETE',
-    });
+    try {
+      return await apiClient<{ message: string }>(`/trash/${typeKey}/${originalId}/force-delete`, {
+        method: 'DELETE',
+      });
+    } catch (err: any) {
+      const msg = (err?.message || '').toLowerCase();
+      if (msg.includes('could not be found') || msg.includes('404')) {
+        try {
+          return await apiClient<{ message: string }>(`/trash/${typeKey}/${originalId}`, {
+            method: 'DELETE',
+          });
+        } catch (err2: any) {
+          return await apiClient<{ message: string }>(`/trash/${typeKey}/${originalId}/force-delete`, {
+            method: 'POST',
+          });
+        }
+      }
+      throw err;
+    }
   },
 };
 
