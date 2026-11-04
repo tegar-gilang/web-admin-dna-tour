@@ -1429,7 +1429,7 @@ export default function Pilgrims() {
 
         {/* Table */}
         <div className="overflow-x-auto w-full">
-          <Table className="w-full min-w-[1150px]">
+          <Table className="w-full min-w-[1200px]">
             <TableHeader className="bg-gray-50/70 border-b border-gray-100">
               <TableRow className="border-b-gray-100 hover:bg-transparent">
                 <TableHead className="w-12 text-center pl-4 py-3.5 whitespace-nowrap">
@@ -1450,7 +1450,7 @@ export default function Pilgrims() {
                   ID JAMAAH
                 </TableHead>
 
-                <TableHead className="text-[11px] uppercase tracking-wider font-bold text-gray-500 py-3.5 whitespace-nowrap min-w-[260px]">
+                <TableHead className="text-[11px] uppercase tracking-wider font-bold text-gray-500 py-3.5 whitespace-nowrap min-w-[320px]">
                   PROFIL JAMAAH
                 </TableHead>
 
@@ -1588,63 +1588,67 @@ export default function Pilgrims() {
                         </TableCell>
 
                         <TableCell className="py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-full bg-[#fcedea] text-[#782820] font-bold text-xs flex items-center justify-center shrink-0 border border-[#f5d0cb]">
-                              {pilgrim.name
-                                .split(' ')
-                                .map(
-                                  (n) =>
-                                    n[0]
-                                )
-                                .join('')
-                                .substring(
-                                  0,
-                                  2
-                                )
-                                .toUpperCase()}
-                            </div>
-
-                            <div className="flex flex-col min-w-0">
-                              <div className="flex items-center gap-1.5 whitespace-nowrap">
-                                <span className="font-bold text-sm text-gray-900 whitespace-nowrap">
-                                  {pilgrim.name}
-                                </span>
-
-                                {isElderly && (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#fdf6e7] text-[#b45309] border border-[#fbe8bf] shrink-0 whitespace-nowrap">
-                                    Lansia
-                                  </span>
-                                )}
+                          <div className="flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-9 h-9 rounded-full bg-[#fcedea] text-[#782820] font-bold text-xs flex items-center justify-center shrink-0 border border-[#f5d0cb]">
+                                {pilgrim.name
+                                  .split(' ')
+                                  .map(
+                                    (n) =>
+                                      n[0]
+                                  )
+                                  .join('')
+                                  .substring(
+                                    0,
+                                    2
+                                  )
+                                  .toUpperCase()}
                               </div>
 
-                              <div className="flex items-center gap-2 text-xs text-gray-500 font-normal mt-0.5 whitespace-nowrap">
-                                <span>
-                                  {pilgrim.gender}{' '}
-                                  &bull;{' '}
-                                  {pilgrim.age ||
-                                    45}{' '}
-                                  thn
-                                </span>
+                              <div className="flex flex-col min-w-0">
+                                <div className="flex items-center gap-1.5 whitespace-nowrap">
+                                  <span className="font-bold text-sm text-gray-900 whitespace-nowrap">
+                                    {pilgrim.name}
+                                  </span>
 
-                                {pilgrim.phone && (
-                                  <span className="text-gray-400 whitespace-nowrap">
+                                  {isElderly && (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#fdf6e7] text-[#b45309] border border-[#fbe8bf] shrink-0 whitespace-nowrap">
+                                      Lansia
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-2 text-xs text-gray-500 font-normal mt-0.5 whitespace-nowrap">
+                                  <span>
+                                    {pilgrim.gender}{' '}
                                     &bull;{' '}
-                                    {
-                                      pilgrim.phone
-                                    }
+                                    {pilgrim.age ||
+                                      45}{' '}
+                                    thn
                                   </span>
-                                )}
 
-                                {isPassportVerified(
-                                  pilgrim
-                                ) && (
-                                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#2563eb] bg-[#edf5ff] px-2 py-0.5 rounded-full border border-blue-200 whitespace-nowrap">
-                                    <FileCheck className="w-3 h-3 shrink-0" />
-                                    Paspor: {getPilgrimPassport(pilgrim)}
-                                  </span>
-                                )}
+                                  {pilgrim.phone && (
+                                    <span className="text-gray-400 whitespace-nowrap">
+                                      &bull;{' '}
+                                      {
+                                        pilgrim.phone
+                                      }
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </div>
+
+                            {isPassportVerified(
+                              pilgrim
+                            ) && (
+                              <div className="shrink-0 ml-auto pl-2">
+                                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#2563eb] bg-[#edf5ff] px-2.5 py-1 rounded-full border border-blue-200 whitespace-nowrap shadow-2xs">
+                                  <FileCheck className="w-3.5 h-3.5 shrink-0" />
+                                  Paspor: {getPilgrimPassport(pilgrim)}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </TableCell>
 
