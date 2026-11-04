@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { toast } from '@/lib/toast';
 import { exportToExcel } from '@/lib/export';
 import { PaymentMethodOptions } from '@/components/ui/PaymentMethodOptions';
+import { mapPaymentMethodToBackend, mapPaymentMethodToUI } from '@/types/finance';
 import { 
   Wallet, 
   TrendingUp, 
@@ -93,12 +94,8 @@ export default function Finance() {
     if (!dateStr) return fallback;
 
     try {
-      const d = new Date(dateStr);
-
-      if (isNaN(d.getTime())) {
-        return dateStr;
-      }
-
+      const cleanDate = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr.split(' ')[0];
+      const parts = cleanDate.split('-');
       const months = [
         'Januari',
         'Februari',
@@ -113,6 +110,20 @@ export default function Finance() {
         'November',
         'Desember'
       ];
+
+      if (parts.length === 3 && parts[0].length === 4) {
+        const year = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1;
+        const day = parseInt(parts[2], 10);
+        if (month >= 0 && month < 12 && !isNaN(day) && !isNaN(year)) {
+          return `${day} ${months[month]} ${year}`;
+        }
+      }
+
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) {
+        return dateStr;
+      }
 
       return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
     } catch {
@@ -512,7 +523,15 @@ export default function Finance() {
       (t.referenceNo && t.referenceNo.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (t.notes && t.notes.toLowerCase().includes(searchTerm.toLowerCase()));
 
-    const matchesMethod = filterMethod ? t.paymentMethod === filterMethod : true;
+    const matchesMethod = filterMethod 
+      ? (
+          t.paymentMethod === filterMethod ||
+          mapPaymentMethodToBackend(t.paymentMethod) === filterMethod ||
+          mapPaymentMethodToUI(filterMethod) === t.paymentMethod ||
+          t.paymentMethod.toLowerCase().includes(filterMethod.toLowerCase()) ||
+          filterMethod.toLowerCase().includes(t.paymentMethod.toLowerCase())
+        )
+      : true;
     const matchesCategory = filterExpenseCategory ? t.category === filterExpenseCategory : true;
 
     if (activeTab === 'income') {
@@ -780,20 +799,47 @@ const handleConfirmQuickPay = async () => {
   }
 };
 
-  // Export Excel
-  const handleExportExcel = () => {
-    const data = filteredTransactions.map(t => ({
-      'ID Transaksi': t.id,
-      'Nama Penerima': t.pilgrimName,
-      'Tipe Transaksi': t.type,
-      'Kategori': t.category,
-      'Nominal (Rp)': t.amount,
-      'Metode Pembayaran': t.paymentMethod,
-      'Tanggal': t.date,
-      'Status': t.status,
-      'No. Referensi': t.referenceNo || '-',
-      'Catatan Rincian': t.notes || '-'
+  // Export Excel Khusus Administrasi Piutang Jamaah
+  const handleExportReceivablesExcel = () => {
+    const data = pilgrimsWithReceivables.map(p => ({
+      'ID Jamaah': p.formId || p.id,
+      'Nama Jamaah': p.name,
+      'No. Telepon': p.phone || '-',
+      'Paket Umrah': p.umrahPackage || '-',
+      'Kloter / Rombongan': p.group || '-',
+      'Total Biaya Paket (Rp)': p.calculatedTotal,
+      'Telah Dibayar / DP (Rp)': p.calculatedPaid,
+      'Sisa Tagihan / Piutang (Rp)': p.remaining,
+      'Status Pembayaran': 'Belum Lunas'
     }));
+
+    exportToExcel(data, `Laporan_Piutang_Jamaah_${todayStr}`, 'Laporan Administrasi Piutang Jamaah - DNA Tour');
+    toast("Laporan piutang jamaah berhasil diexport ke Excel.", "success");
+  };
+
+  // Export Excel Keuangan (Arus Kas Transaksi)
+  const handleExportExcel = () => {
+    const data = filteredTransactions.map(t => {
+      const isExpense = t.type === 'Pengeluaran';
+      // Untuk pengeluaran di luar transaksi jamaah, hilangkan ID Transaksi (tampilkan '-')
+      // Untuk transaksi jamaah, gunakan ID yang sama persis dengan yang tampil pada Web Admin
+      const displayId = isExpense 
+        ? '-' 
+        : (t.pilgrimId || pilgrims.find(p => p.name.toLowerCase() === t.pilgrimName.toLowerCase())?.id || t.referenceNo || '-');
+
+      return {
+        'ID Transaksi': displayId,
+        'Nama Jamaah / Penerima': t.pilgrimName,
+        'Tipe Transaksi': t.type,
+        'Kategori': t.category,
+        'Nominal (Rp)': t.amount,
+        'Metode Pembayaran': t.paymentMethod,
+        'Tanggal': formatIndoDate(t.date),
+        'Status': t.status,
+        'No. Referensi': t.referenceNo || '-',
+        'Catatan Rincian': t.notes || '-'
+      };
+    });
 
     exportToExcel(data, `Laporan_Keuangan_Umrah_${todayStr}`, 'Laporan Keuangan & Arus Kas - DNA Tour');
     toast("Laporan keuangan berhasil diexport ke Excel.", "success");
@@ -814,14 +860,25 @@ const handleConfirmQuickPay = async () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
-            <Button 
-              onClick={handleExportExcel}
-              variant="outline"
-              className="text-xs h-10 font-semibold text-gray-700 border-gray-200 bg-white hover:bg-gray-50 flex-1 sm:flex-none justify-center px-4 rounded-xl cursor-pointer shadow-2xs"
-            >
-              <FileSpreadsheet className="w-4 h-4 mr-1.5 text-gray-600" /> 
-              Export Excel
-            </Button>
+            {activeTab === 'receivables' ? (
+              <Button 
+                onClick={handleExportReceivablesExcel}
+                variant="outline"
+                className="text-xs h-10 font-semibold text-amber-900 border-amber-300 bg-amber-50/50 hover:bg-amber-100 flex-1 sm:flex-none justify-center px-4 rounded-xl cursor-pointer shadow-2xs"
+              >
+                <FileSpreadsheet className="w-4 h-4 mr-1.5 text-amber-700" /> 
+                Export Excel Piutang
+              </Button>
+            ) : (
+              <Button 
+                onClick={handleExportExcel}
+                variant="outline"
+                className="text-xs h-10 font-semibold text-gray-700 border-gray-200 bg-white hover:bg-gray-50 flex-1 sm:flex-none justify-center px-4 rounded-xl cursor-pointer shadow-2xs"
+              >
+                <FileSpreadsheet className="w-4 h-4 mr-1.5 text-gray-600" /> 
+                Export Excel Keuangan
+              </Button>
+            )}
 
             <Button 
               onClick={() => {
@@ -1125,7 +1182,7 @@ const handleConfirmQuickPay = async () => {
                 className="h-9 rounded-xl border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 cursor-pointer"
               >
                 <option value="">Semua Metode Pembayaran</option>
-                <PaymentMethodOptions />
+                <PaymentMethodOptions includePlaceholder={false} />
               </select>
             )}
 
@@ -1202,7 +1259,7 @@ const handleConfirmQuickPay = async () => {
                         <TableCell className="px-4 py-4 whitespace-nowrap">
                           <div className="flex items-center gap-1.5 font-bold text-sm tracking-tight text-gray-900">
                             <Receipt className="w-3.5 h-3.5 text-red-500 shrink-0" />
-                            {tx.id}
+                            {tx.referenceNo || '-'}
                           </div>
                         </TableCell>
                         <TableCell className="px-4 py-4">
@@ -1219,7 +1276,7 @@ const handleConfirmQuickPay = async () => {
                         </TableCell>
                         <TableCell className="px-4 py-4 whitespace-nowrap">
                           <div className="font-bold text-sm text-gray-900">{tx.paymentMethod}</div>
-                          <div className="text-xs text-gray-400 font-normal mt-0.5">{tx.date}</div>
+                          <div className="text-xs text-gray-400 font-normal mt-0.5">{formatIndoDate(tx.date)}</div>
                         </TableCell>
                         <TableCell className="text-center px-4 py-4 whitespace-nowrap">
                           <div className="flex items-center justify-center gap-1.5">
@@ -1269,8 +1326,8 @@ const handleConfirmQuickPay = async () => {
             <Table className="w-full min-w-[950px]">
               <TableHeader className="bg-gray-50/80">
                 <TableRow className="border-b-gray-200">
-                  <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap px-4 min-w-[130px]">ID TRANSAKSI</TableHead>
-                  <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap px-4 min-w-[240px]">NAMA JAMAAH</TableHead>
+                  <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap px-4 min-w-[130px]">ID TRANSAKSI / JAMAAH</TableHead>
+                  <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap px-4 min-w-[240px]">NAMA JAMAAH / PENERIMA</TableHead>
                   <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap px-4 min-w-[160px]">TIPE & KATEGORI</TableHead>
                   <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap px-4 text-right min-w-[150px]">NOMINAL (RP)</TableHead>
                   <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap px-4 min-w-[160px]">METODE & TANGGAL</TableHead>
@@ -1288,11 +1345,16 @@ const handleConfirmQuickPay = async () => {
                 ) : (
                   filteredTransactions.map((tx) => {
                     const isIncome = tx.type.startsWith('Pemasukan');
-                    const pilgrimIdDisplay = tx.pilgrimId || pilgrims.find(p => p.name.toLowerCase() === tx.pilgrimName.toLowerCase())?.id || tx.id;
+                    const isExpense = tx.type === 'Pengeluaran';
+                    const pilgrimIdDisplay = isExpense
+                      ? '-'
+                      : (tx.pilgrimId || pilgrims.find(p => p.name.toLowerCase() === tx.pilgrimName.toLowerCase())?.id || '-');
                     return (
                       <TableRow key={tx.id} className="hover:bg-gray-50/80 transition-colors">
                         <TableCell className="px-4 py-4 whitespace-nowrap">
-                          <div className="font-bold text-sm tracking-tight text-[#480c0c] whitespace-nowrap">{pilgrimIdDisplay}</div>
+                          <div className={`font-bold text-sm tracking-tight whitespace-nowrap ${isExpense ? 'text-gray-400 font-normal pl-4' : 'text-[#480c0c]'}`}>
+                            {pilgrimIdDisplay}
+                          </div>
                         </TableCell>
                         <TableCell className="px-4 py-4">
                           <div className="font-bold text-sm text-gray-900 leading-snug whitespace-nowrap">{tx.pilgrimName}</div>
@@ -1313,7 +1375,7 @@ const handleConfirmQuickPay = async () => {
                         </TableCell>
                         <TableCell className="px-4 py-4 whitespace-nowrap">
                           <div className="font-bold text-sm text-gray-900">{tx.paymentMethod}</div>
-                          <div className="text-xs text-gray-400 font-normal mt-0.5">{tx.date}</div>
+                          <div className="text-xs text-gray-400 font-normal mt-0.5">{formatIndoDate(tx.date)}</div>
                         </TableCell>
                         <TableCell className="px-4 py-4 whitespace-nowrap">
                           <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full border shadow-2xs ${
@@ -1366,14 +1428,24 @@ const handleConfirmQuickPay = async () => {
         {/* Tab 3: Receivables & Pilgrim Balance Settlements */}
         {activeTab === 'receivables' && (
           <div className="p-4 sm:p-6 space-y-4">
-            <div className="bg-amber-50/80 p-4 rounded-xl border border-amber-200/80 flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-              <div className="text-xs text-amber-900 leading-relaxed">
-                <p className="font-bold">Daftar Jamaah dengan Sisa Tagihan (Piutang Belum Lunas)</p>
-                <p className="mt-0.5 text-amber-800 font-normal">
-                  Berikut adalah seluruh jamaah yang telah melakukan pendaftaran skema DP namun belum melunasi sisa pembayaran. Klik icon <strong className="font-semibold">Mata</strong> untuk melihat rincian piutang, atau <strong className="font-semibold">"Catat Pelunasan"</strong> untuk mencatat pembayaran langsung.
-                </p>
+            <div className="bg-amber-50/80 p-4 rounded-xl border border-amber-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="text-xs text-amber-900 leading-relaxed">
+                  <p className="font-bold">Daftar Jamaah dengan Sisa Tagihan (Piutang Belum Lunas)</p>
+                  <p className="mt-0.5 text-amber-800 font-normal">
+                    Berikut adalah seluruh jamaah yang telah melakukan pendaftaran skema DP namun belum melunasi sisa pembayaran. Klik icon <strong className="font-semibold">Mata</strong> untuk melihat rincian piutang, atau <strong className="font-semibold">"Catat Pelunasan"</strong> untuk mencatat pembayaran langsung.
+                  </p>
+                </div>
               </div>
+              <Button
+                onClick={handleExportReceivablesExcel}
+                variant="outline"
+                className="text-xs h-9 font-semibold text-amber-900 border-amber-300 bg-white hover:bg-amber-100/70 shrink-0 rounded-xl cursor-pointer shadow-2xs whitespace-nowrap"
+              >
+                <FileSpreadsheet className="w-4 h-4 mr-1.5 text-amber-700" />
+                Export Piutang Excel
+              </Button>
             </div>
 
             <div className="overflow-x-auto rounded-2xl border border-gray-200/80 bg-white">
@@ -1657,7 +1729,7 @@ const handleConfirmQuickPay = async () => {
                   type="button"
                   className="px-6 py-2.5 rounded-full text-sm sm:text-base font-bold bg-[#00a859] text-white shadow-xs cursor-default select-none"
                 >
-                  {txForm.type === 'Pengeluaran' ? 'Catat Pengeluaran' : 'Catat Pemasukan'}
+                  Catat Pemasukan
                 </button>
               )}
             </div>
@@ -1699,7 +1771,6 @@ const handleConfirmQuickPay = async () => {
                       <option value="Pemasukan (Pelunasan)">Pemasukan (Pelunasan Umrah)</option>
                       <option value="Pemasukan (Lunas)">Pemasukan (Lunas Direct)</option>
                       <option value="Pemasukan Lain">Pemasukan Lain-lain</option>
-                      <option value="Pengeluaran">Pengeluaran Operasional</option>
                     </select>
                   </div>
                 </div>
