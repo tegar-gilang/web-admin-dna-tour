@@ -439,6 +439,7 @@ export const useStore = create<StoreState>((set) => ({
   pilgrims: [
     { 
       id: "PL-88210", 
+      pilgrimId: "PL-88210",
       formId: "FRM-001",
       name: "H. Ahmad Zaki Al-Farizi", 
       passport: "X-99821014", 
@@ -482,6 +483,7 @@ export const useStore = create<StoreState>((set) => ({
     },
     { 
       id: "P-1001", 
+      pilgrimId: "P-1001",
       formId: "FRM-002",
       name: "Ahmad Abdullah", 
       passport: "A1234567", 
@@ -525,6 +527,7 @@ export const useStore = create<StoreState>((set) => ({
     },
     { 
       id: "P-1002", 
+      pilgrimId: "P-1002",
       formId: "FRM-003",
       name: "Fatima Zahra", 
       passport: "B7654321", 
@@ -568,6 +571,7 @@ export const useStore = create<StoreState>((set) => ({
     },
     { 
       id: "P-1003", 
+      pilgrimId: "P-1003",
       formId: "FRM-004",
       name: "Muhammad Ali", 
       passport: "C9876543", 
@@ -611,6 +615,7 @@ export const useStore = create<StoreState>((set) => ({
     },
     { 
       id: "P-1004", 
+      pilgrimId: "P-1004",
       formId: "FRM-005",
       name: "Aisha Rahman", 
       passport: "D3456789", 
