@@ -851,7 +851,7 @@ export default function RoomAllocation() {
         </div>
 
         {/* Row 2: Search Box (Di Bawah Filter Kloter) */}
-        <div className="flex items-center justify-between gap-3 pt-4 pb-2 border-t border-gray-100">
+        <div className="flex items-center justify-between gap-3 pt-3.5 border-t border-gray-100">
           <div className="relative w-full sm:w-[320px]">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <Input 
@@ -872,7 +872,7 @@ export default function RoomAllocation() {
         </div>
 
         {/* Row 3: Filter Tipe 1 Baris Ke Samping (Di Bawah Search) & Info Kloter/Terdaftar Segaris */}
-        <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between gap-3 !mt-8 pb-1">
+        <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between gap-3 pt-3 border-t border-gray-100">
           
           {/* Room Category Tabs / Filter Pills - 1 Baris Ke Samping */}
           <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar w-full xl:w-auto py-1">
