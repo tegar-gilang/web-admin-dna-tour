@@ -40,15 +40,15 @@ export const isValidCoordinate = (val: string | number | null | undefined): bool
 export const getStatusLabel = (status: SosStatus): string => {
   switch (status) {
     case 'triggered':
-      return 'Terpicu (Baru)';
+      return 'Menunggu Penanganan';
     case 'acknowledged':
-      return 'Dikonfirmasi';
+      return 'Diterima (Riwayat)';
     case 'in_action':
-      return 'Sedang Ditangani';
+      return 'Dalam Penanganan (Riwayat)';
     case 'resolved':
       return 'Selesai';
     case 'false_alarm':
-      return 'False Alarm';
+      return 'Alarm Palsu';
     default:
       return status;
   }
@@ -60,21 +60,21 @@ export const getStatusBadge = (status: SosStatus) => {
       return (
         <span className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-700 bg-rose-50 px-3 py-1 rounded-full border border-rose-300 shadow-2xs">
           <span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse"></span>
-          TERPICU
+          MENUNGGU PENANGANAN
         </span>
       );
     case 'acknowledged':
       return (
         <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-800 bg-amber-50 px-3 py-1 rounded-full border border-amber-300 shadow-2xs">
           <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-          DIKONFIRMASI
+          DITERIMA (RIWAYAT)
         </span>
       );
     case 'in_action':
       return (
         <span className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-800 bg-blue-50 px-3 py-1 rounded-full border border-blue-300 shadow-2xs">
           <Activity className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-          PENANGANAN
+          PENANGANAN (RIWAYAT)
         </span>
       );
     case 'resolved':
@@ -88,7 +88,7 @@ export const getStatusBadge = (status: SosStatus) => {
       return (
         <span className="inline-flex items-center gap-1.5 text-xs font-bold text-gray-700 bg-gray-100 px-3 py-1 rounded-full border border-gray-300 shadow-2xs">
           <AlertTriangle className="w-3.5 h-3.5 text-gray-500 shrink-0" />
-          FALSE ALARM
+          ALARM PALSU
         </span>
       );
     default:
@@ -472,7 +472,7 @@ export default function Emergency() {
   // ==========================================
 
   const isIncidentActive = (status: SosStatus) => {
-    return status === 'triggered' || status === 'acknowledged' || status === 'in_action';
+    return status === 'triggered';
   };
 
   const isIncidentResolved = (status: SosStatus) => {
@@ -567,30 +567,14 @@ export default function Emergency() {
     setSelectedIds(next);
   };
 
-  // Helper to determine next primary status action
+  // Helper to determine next primary status action (simplified: triggered → resolved directly)
   const getNextActionConfig = (status: SosStatus) => {
     switch (status) {
       case 'triggered':
         return {
-          nextStatus: 'acknowledged' as SosStatus,
-          buttonText: 'Konfirmasi (Acknowledge)',
-          badgeText: 'Konfirmasi',
-          icon: CheckCircle2,
-          className: 'bg-amber-600 hover:bg-amber-700 text-white',
-        };
-      case 'acknowledged':
-        return {
-          nextStatus: 'in_action' as SosStatus,
-          buttonText: 'Mulai Penanganan (In Action)',
-          badgeText: 'Tangani',
-          icon: Activity,
-          className: 'bg-blue-600 hover:bg-blue-700 text-white',
-        };
-      case 'in_action':
-        return {
           nextStatus: 'resolved' as SosStatus,
-          buttonText: 'Tandai Selesai (Resolve)',
-          badgeText: 'Selesaikan',
+          buttonText: 'Tangani — Tandai Selesai',
+          badgeText: 'Tangani',
           icon: CheckCheck,
           className: 'bg-emerald-600 hover:bg-emerald-700 text-white',
         };
@@ -958,11 +942,11 @@ export default function Emergency() {
                 onChange={(e) => setFilterStatus(e.target.value)}
               >
                 <option value="">Semua Status</option>
-                <option value="triggered">Terpicu (Baru)</option>
-                <option value="acknowledged">Dikonfirmasi Petugas</option>
-                <option value="in_action">Dalam Penanganan</option>
-                <option value="resolved">Selesai Ditangani</option>
-                <option value="false_alarm">False Alarm (Batal)</option>
+                <option value="triggered">Menunggu Penanganan</option>
+                <option value="acknowledged">Diterima (Riwayat)</option>
+                <option value="in_action">Dalam Penanganan (Riwayat)</option>
+                <option value="resolved">Selesai</option>
+                <option value="false_alarm">Alarm Palsu</option>
               </select>
             </div>
 
@@ -1355,11 +1339,13 @@ export default function Emergency() {
                         <span>STATUS: {getStatusLabel(currentItem.status)}</span>
                       </p>
                       <p className="text-xs font-medium opacity-90 mt-0.5">
-                        {isActive 
-                          ? 'Memerlukan koordinasi & tindakan petugas di lapangan' 
+                        {currentItem.status === 'triggered'
+                          ? 'Menunggu penanganan — tekan Tangani untuk menyelesaikan insiden'
                           : currentItem.status === 'resolved'
                             ? 'Insiden telah selesai ditangani dan ditutup'
-                            : 'Laporan telah dibatalkan sebagai false alarm'}
+                            : currentItem.status === 'false_alarm'
+                              ? 'Laporan telah dibatalkan sebagai alarm palsu'
+                              : 'Status historis — tidak memerlukan tindakan lebih lanjut'}
                       </p>
                     </div>
                   </div>
