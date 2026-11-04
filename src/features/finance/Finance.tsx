@@ -5,6 +5,7 @@ import { expenseService } from '@/core/services/expenseService';
 import { registrationService, RegistrationOption } from '@/core/services/registrationService';
 import { financeSummaryService } from '@/core/services/financeSummaryService';
 import { otherIncomeService } from '@/core/services/otherIncomeService';
+import { jamaahService } from '@/core/services/jamaahService';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
@@ -199,6 +200,21 @@ export default function Finance() {
       }
     };
     fetchRegistrations();
+  }, []);
+
+  const [jamaahList, setJamaahList] = useState<Pilgrim[]>([]);
+  useEffect(() => {
+    const fetchJamaah = async () => {
+      try {
+        const jList = await jamaahService.getJamaahList();
+        if (jList && jList.length > 0) {
+          setJamaahList(jList);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch jamaah list for finance:', err);
+      }
+    };
+    fetchJamaah();
   }, []);
 
   const [activeTab, setActiveTab] = useState<'all' | 'income' | 'receivables' | 'expense'>('all');
@@ -484,6 +500,46 @@ export default function Finance() {
       acc[cat] = (acc[cat] || 0) + t.amount;
       return acc;
     }, {} as Record<string, number>);
+
+  // Resolusi ID Jamaah Terintegrasi (Bukan UUID acak)
+  const getIntegratedJamaahId = (p: Pilgrim): string => {
+    if (p.pilgrimId && p.pilgrimId.trim() !== '') {
+      return p.pilgrimId.trim();
+    }
+    // Match with jamaahList by NIK / passport / name
+    const matched = jamaahList.find(j => 
+      (j.ktp && p.ktp && j.ktp === p.ktp) ||
+      (j.passport && p.passport && p.passport !== '-' && j.passport.toLowerCase() === p.passport.toLowerCase()) ||
+      (j.name && p.name && j.name.trim().toLowerCase() === p.name.trim().toLowerCase())
+    );
+    if (matched && (matched.pilgrimId || matched.id)) {
+      return matched.pilgrimId || matched.id;
+    }
+    // Fallback to Registration Number (formId, e.g. REG-2026-001)
+    if (p.formId && p.formId.trim() !== '') {
+      return p.formId.trim();
+    }
+    if (p.id && (!p.id.includes('-') || p.id.length < 30)) {
+      return p.id;
+    }
+    return '-';
+  };
+
+  const getResolvedJamaahId = (pilgrimName?: string, pilgrimId?: string): string => {
+    if (pilgrimId && (!pilgrimId.includes('-') || pilgrimId.length < 30)) {
+      return pilgrimId;
+    }
+    if (!pilgrimName) return '-';
+    const matchedPilgrim = pilgrims.find(p => p.name && p.name.trim().toLowerCase() === pilgrimName.trim().toLowerCase());
+    if (matchedPilgrim) {
+      return getIntegratedJamaahId(matchedPilgrim);
+    }
+    const matchedJamaah = jamaahList.find(j => j.name && j.name.trim().toLowerCase() === pilgrimName.trim().toLowerCase());
+    if (matchedJamaah && (matchedJamaah.pilgrimId || matchedJamaah.id)) {
+      return matchedJamaah.pilgrimId || matchedJamaah.id;
+    }
+    return '-';
+  };
 
   // Pilgrims with outstanding balances
   const allReceivables = useMemo(() => {
@@ -802,7 +858,7 @@ const handleConfirmQuickPay = async () => {
   // Export Excel Khusus Administrasi Piutang Jamaah
   const handleExportReceivablesExcel = () => {
     const data = pilgrimsWithReceivables.map(p => ({
-      'ID Jamaah': p.formId || p.id,
+      'ID Jamaah': getIntegratedJamaahId(p),
       'Nama Jamaah': p.name,
       'No. Telepon': p.phone || '-',
       'Paket Umrah': p.umrahPackage || '-',
@@ -820,15 +876,14 @@ const handleConfirmQuickPay = async () => {
   // Export Excel Keuangan (Arus Kas Transaksi)
   const handleExportExcel = () => {
     const data = filteredTransactions.map(t => {
-      const isExpense = t.type === 'Pengeluaran';
-      // Untuk pengeluaran di luar transaksi jamaah, hilangkan ID Transaksi (tampilkan '-')
-      // Untuk transaksi jamaah, gunakan ID yang sama persis dengan yang tampil pada Web Admin
-      const displayId = isExpense 
-        ? '-' 
-        : (t.pilgrimId || pilgrims.find(p => p.name.toLowerCase() === t.pilgrimName.toLowerCase())?.id || t.referenceNo || '-');
+      const isJamaahPayment = t.type === 'Pemasukan (DP)' || t.type === 'Pemasukan (Pelunasan)' || t.type === 'Pemasukan (Lunas)';
+      // Untuk pemasukan lain & pengeluaran di luar transaksi jamaah, ID Jamaah tidak otomatis terintegrasi (tampilkan '-')
+      const displayId = isJamaahPayment 
+        ? getResolvedJamaahId(t.pilgrimName, t.pilgrimId)
+        : '-';
 
       return {
-        'ID Transaksi': displayId,
+        'ID Jamaah': displayId,
         'Nama Jamaah / Penerima': t.pilgrimName,
         'Tipe Transaksi': t.type,
         'Kategori': t.category,
@@ -836,7 +891,7 @@ const handleConfirmQuickPay = async () => {
         'Metode Pembayaran': t.paymentMethod,
         'Tanggal': formatIndoDate(t.date),
         'Status': t.status,
-        'No. Referensi': t.referenceNo || '-',
+        'Bukti Transaksi': t.referenceNo || '-',
         'Catatan Rincian': t.notes || '-'
       };
     });
@@ -1238,7 +1293,7 @@ const handleConfirmQuickPay = async () => {
               <Table className="w-full min-w-[850px]">
                 <TableHeader className="bg-gray-50/80">
                   <TableRow className="border-b-gray-200">
-                    <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap px-4 min-w-[130px]">NO. REFERENSI</TableHead>
+                    <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap px-4 min-w-[130px]">BUKTI TRANSAKSI</TableHead>
                     <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap px-4 min-w-[220px]">PENERIMA</TableHead>
                     <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap px-4 min-w-[140px]">KATEGORI</TableHead>
                     <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap px-4 text-right min-w-[140px]">NOMINAL (RP)</TableHead>
@@ -1326,7 +1381,7 @@ const handleConfirmQuickPay = async () => {
             <Table className="w-full min-w-[950px]">
               <TableHeader className="bg-gray-50/80">
                 <TableRow className="border-b-gray-200">
-                  <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap px-4 min-w-[130px]">ID TRANSAKSI / JAMAAH</TableHead>
+                  <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap px-4 min-w-[130px]">ID JAMAAH</TableHead>
                   <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap px-4 min-w-[240px]">NAMA JAMAAH / PENERIMA</TableHead>
                   <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap px-4 min-w-[160px]">TIPE & KATEGORI</TableHead>
                   <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap px-4 text-right min-w-[150px]">NOMINAL (RP)</TableHead>
@@ -1345,14 +1400,14 @@ const handleConfirmQuickPay = async () => {
                 ) : (
                   filteredTransactions.map((tx) => {
                     const isIncome = tx.type.startsWith('Pemasukan');
-                    const isExpense = tx.type === 'Pengeluaran';
-                    const pilgrimIdDisplay = isExpense
-                      ? '-'
-                      : (tx.pilgrimId || pilgrims.find(p => p.name.toLowerCase() === tx.pilgrimName.toLowerCase())?.id || '-');
+                    const isJamaahPayment = tx.type === 'Pemasukan (DP)' || tx.type === 'Pemasukan (Pelunasan)' || tx.type === 'Pemasukan (Lunas)';
+                    const pilgrimIdDisplay = isJamaahPayment
+                      ? getResolvedJamaahId(tx.pilgrimName, tx.pilgrimId)
+                      : '-';
                     return (
                       <TableRow key={tx.id} className="hover:bg-gray-50/80 transition-colors">
                         <TableCell className="px-4 py-4 whitespace-nowrap">
-                          <div className={`font-bold text-sm tracking-tight whitespace-nowrap ${isExpense ? 'text-gray-400 font-normal pl-4' : 'text-[#480c0c]'}`}>
+                          <div className={`font-bold text-sm tracking-tight whitespace-nowrap ${!isJamaahPayment ? 'text-gray-400 font-normal pl-4' : 'text-[#480c0c]'}`}>
                             {pilgrimIdDisplay}
                           </div>
                         </TableCell>
@@ -1452,6 +1507,7 @@ const handleConfirmQuickPay = async () => {
               <Table className="w-full min-w-[850px]">
                 <TableHeader className="bg-gray-50/80">
                   <TableRow className="border-b-gray-200">
+                    <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap px-4 min-w-[130px]">ID JAMAAH</TableHead>
                     <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap px-4 min-w-[220px]">NAMA JAMAAH</TableHead>
                     <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap px-4 min-w-[180px]">PAKET & KLOTER</TableHead>
                     <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap px-4 text-right min-w-[140px]">TOTAL BIAYA</TableHead>
@@ -1463,7 +1519,7 @@ const handleConfirmQuickPay = async () => {
                 <TableBody className="divide-y divide-gray-100 animate-fade-in">
                   {pilgrimsWithReceivables.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-12 text-emerald-800 font-bold text-xs">
+                      <TableCell colSpan={7} className="text-center py-12 text-emerald-800 font-bold text-xs">
                         <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-emerald-600" />
                         Alhamdulillah, seluruh jamaah sudah lunas 100%! Tidak ada piutang tertunggak.
                       </TableCell>
@@ -1471,9 +1527,14 @@ const handleConfirmQuickPay = async () => {
                   ) : (
                     pilgrimsWithReceivables.map((p) => (
                       <TableRow key={p.id} className="hover:bg-gray-50/80 transition-colors">
+                        <TableCell className="px-4 py-4 whitespace-nowrap">
+                          <div className="font-bold text-sm tracking-tight text-[#480c0c] whitespace-nowrap">
+                            {getIntegratedJamaahId(p)}
+                          </div>
+                        </TableCell>
                         <TableCell className="px-4 py-4">
                           <div className="font-bold text-sm text-gray-900 leading-snug whitespace-nowrap">{p.name}</div>
-                          <div className="text-xs text-gray-400 font-mono font-normal mt-0.5">{p.id} • {p.phone || '-'}</div>
+                          <div className="text-xs text-gray-400 font-normal mt-0.5">{p.phone || '-'}</div>
                         </TableCell>
                         <TableCell className="px-4 py-4">
                           <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold text-[#782820] bg-[#fcedea] border border-[#f5d0cb] shadow-2xs tracking-wide uppercase">
@@ -1664,7 +1725,7 @@ const handleConfirmQuickPay = async () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
                   <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                    BUKTI REFERENSI
+                    BUKTI TRANSAKSI
                   </label>
                   <div className="sm:col-span-8">
                     <Input 
@@ -1777,7 +1838,7 @@ const handleConfirmQuickPay = async () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
                   <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                    NAMA JAMAAH *
+                    SUMBER DANA *
                   </label>
                   <div className="sm:col-span-8 relative">
                     <Input 
@@ -1904,7 +1965,7 @@ const handleConfirmQuickPay = async () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
                   <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                    BUKTI REFERENSI
+                    BUKTI TRANSAKSI
                   </label>
                   <div className="sm:col-span-8">
                     <Input 
@@ -2395,7 +2456,7 @@ const handleConfirmQuickPay = async () => {
                           <div className="flex items-center gap-2">
                             <h3 className="text-base font-bold text-gray-900">{selectedDetailReceivable.name}</h3>
                             <Badge variant="outline" className="font-mono text-[10px] bg-white text-gray-700 border-gray-300">
-                              {selectedDetailReceivable.id}
+                              {getIntegratedJamaahId(selectedDetailReceivable)}
                             </Badge>
                           </div>
                           <p className="text-xs text-gray-600 font-medium mt-0.5">
