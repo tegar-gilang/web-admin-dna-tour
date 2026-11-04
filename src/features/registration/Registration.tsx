@@ -869,168 +869,183 @@ export default function Registration() {
 
   const handleExportExcel = () => {
     const exportData =
-      filteredPilgrims.map((p) => ({
-        'ID Pendaftaran':
-          p.id,
+      filteredPilgrims.map((p) => {
+        const totalAmt = p.totalAmount || 30000000;
+        const paidAmt = p.paidAmount || 0;
+        const remainingAmt =
+          p.remainingCost !== undefined
+            ? p.remainingCost
+            : Math.max(0, totalAmt - paidAmt);
 
-        'ID Jamaah':
-          formatJamaahId({ pilgrimId: p.pilgrimId }),
+        return {
+          'ID Jamaah':
+            formatJamaahId({ pilgrimId: p.pilgrimId }),
 
-        'Form ID':
-          p.formId || '-',
+          'Nama Lengkap':
+            p.name,
 
-        'Nama Lengkap':
-          p.name,
+          'No. Paspor':
+            p.passport || '-',
 
-        'No. Paspor':
-          p.passport || '-',
+          'No. KTP':
+            p.ktp || '-',
 
-        'No. KTP':
-          p.ktp || '-',
+          'No. Telepon':
+            p.phone || '-',
 
-        'Jenis Kelamin':
-          p.gender,
+          'Usia':
+            p.age,
 
-        'Usia':
-          p.age,
+          'Jenis Kelamin':
+            p.gender || '-',
 
-        'No. Telepon':
-          p.phone || '-',
+          'Tanggal Pendaftaran':
+            formatDateIndo(p.registrationDate),
 
-        'Tgl. Registrasi':
-          formatDateIndo(p.registrationDate),
+          'Tanggal Keberangkatan':
+            formatDateIndo(p.departureDate),
 
-        'Tgl. Keberangkatan':
-          formatDateIndo(p.departureDate),
+          'Pilihan Paket Umrah':
+            p.umrahPackage || '-',
 
-        'Paket Umrah':
-          p.umrahPackage || '-',
+          'Kloter Keberangkatan':
+            p.group || '-',
 
-        'Kloter':
-          p.group || '-',
+          'Vaksin Meningitis':
+            p.meningitis
+              ? 'Sudah Vaksin'
+              : 'Belum Vaksin',
 
-        'Status Pembayaran':
-          p.paymentOption ||
-          'Belum Lunas',
+          'Pas Foto 4x6':
+            p.photo
+              ? 'Sudah Ada'
+              : 'Belum Ada',
 
-        'Total Biaya (Rp)':
-          p.totalAmount ||
-          30000000,
+          // ======================================
+          // EQUIPMENT DARI equipments[]
+          // ======================================
 
-        'Telah Dibayar (Rp)':
-          p.paidAmount || 0,
+          'Koper Besar':
+            getPilgrimEquipment(
+              p,
+              'Koper Besar'
+            )?.is_received
+              ? 'Ada'
+              : 'Belum',
 
-        'Sisa Tagihan (Rp)':
-          Math.max(
-            0,
-            (p.totalAmount ||
-              30000000) -
-              (p.paidAmount || 0)
-          ),
+          'Koper Kabin':
+            getPilgrimEquipment(
+              p,
+              'Koper Kabin'
+            )?.is_received
+              ? 'Ada'
+              : 'Belum',
 
-        'Info Dokumen':
-          p.documentInfo || '-',
+          'Seragam Batik':
+            getPilgrimEquipment(
+              p,
+              'Seragam Batik'
+            )?.is_received
+              ? 'Ada'
+              : 'Belum',
 
-        'Vaksin Meningitis':
-          p.meningitis
-            ? 'Sudah'
-            : 'Belum',
+          'Buku Panduan':
+            getPilgrimEquipment(
+              p,
+              'Buku Panduan'
+            )?.is_received
+              ? 'Ada'
+              : 'Belum',
 
-        'Pas Foto 4x6':
-          p.photo
-            ? 'Sudah'
-            : 'Belum',
+          'Kain Ihram':
+            getPilgrimEquipment(
+              p,
+              'Kain Ihram'
+            )?.is_received
+              ? 'Ada'
+              : 'Belum',
 
-        // ======================================
-        // EQUIPMENT DARI equipments[]
-        // ======================================
+          'Sabuk':
+            getPilgrimEquipment(
+              p,
+              'Sabuk'
+            )?.is_received
+              ? 'Ada'
+              : 'Belum',
 
-        'Koper Besar':
-          getPilgrimEquipment(
-            p,
-            'Koper Besar'
-          )?.is_received
-            ? 'Ada'
-            : 'Belum',
+          'Kerudung Merah':
+            getPilgrimEquipment(
+              p,
+              'Kerudung Merah'
+            )?.is_received
+              ? 'Ada'
+              : 'Belum',
 
-        'Koper Kabin':
-          getPilgrimEquipment(
-            p,
-            'Koper Kabin'
-          )?.is_received
-            ? 'Ada'
-            : 'Belum',
+          'Kerudung Putih':
+            getPilgrimEquipment(
+              p,
+              'Kerudung Putih'
+            )?.is_received
+              ? 'Ada'
+              : 'Belum',
 
-        'Seragam Batik':
-          getPilgrimEquipment(
-            p,
-            'Seragam Batik'
-          )?.is_received
-            ? 'Ada'
-            : 'Belum',
+          'Tas Selempang':
+            getPilgrimEquipment(
+              p,
+              'Tas Selempang'
+            )?.is_received
+              ? 'Ada'
+              : 'Belum',
 
-        'Buku Panduan':
-          getPilgrimEquipment(
-            p,
-            'Buku Panduan'
-          )?.is_received
-            ? 'Ada'
-            : 'Belum',
+          'Tas Sandal':
+            getPilgrimEquipment(
+              p,
+              'Tas Sandal'
+            )?.is_received
+              ? 'Ada'
+              : 'Belum',
 
-        'Kain Ihram':
-          getPilgrimEquipment(
-            p,
-            'Kain Ihram'
-          )?.is_received
-            ? 'Ada'
-            : 'Belum',
+          'Syall':
+            getPilgrimEquipment(
+              p,
+              'Syall'
+            )?.is_received
+              ? 'Ada'
+              : 'Belum',
 
-        'Sabuk Ihram':
-          getPilgrimEquipment(
-            p,
-            'Sabuk'
-          )?.size || '-',
+          'Ukuran Sabuk':
+            getPilgrimEquipment(
+              p,
+              'Sabuk'
+            )?.size || p.sabuk || '-',
 
-        'Kerudung Merah':
-          getPilgrimEquipment(
-            p,
-            'Kerudung Merah'
-          )?.is_received
-            ? 'Ada'
-            : 'Belum',
+          // ======================================
+          // PEMBAYARAN
+          // ======================================
 
-        'Kerudung Putih':
-          getPilgrimEquipment(
-            p,
-            'Kerudung Putih'
-          )?.is_received
-            ? 'Ada'
-            : 'Belum',
+          'Status Pembayaran':
+            p.paymentOption ||
+            'Belum Bayar',
 
-        'Tas Selempang':
-          getPilgrimEquipment(
-            p,
-            'Tas Selempang'
-          )?.is_received
-            ? 'Ada'
-            : 'Belum',
+          'Total Biaya Paket (Rp)':
+            totalAmt,
 
-        'Tas Sandal':
-          getPilgrimEquipment(
-            p,
-            'Tas Sandal'
-          )?.is_received
-            ? 'Ada'
-            : 'Belum',
+          'Nominal Telah Dibayar (Rp)':
+            paidAmt,
 
-        Syall:
-          getPilgrimEquipment(
-            p,
-            'Syall'
-          )?.is_received
-            ? 'Ada'
-            : 'Belum'
-      }));
+          'Sisa Tagihan (Rp)':
+            remainingAmt,
+
+          'Metode Pembayaran':
+            p.paymentMethod || '-',
+
+          'Tanggal Pembayaran':
+            formatDateIndo(p.paymentDate || p.registrationDate),
+
+          'Catatan Pembayaran':
+            p.paymentNotes || '-'
+        };
+      });
 
     exportToExcel(
       exportData,
