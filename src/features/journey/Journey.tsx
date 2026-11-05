@@ -552,7 +552,7 @@ export default function Journey() {
         <Card className="bg-white border-gray-200 shadow-2xs flex flex-col justify-between">
           <CardContent className="p-5">
             <div className="flex items-center justify-between text-gray-500 mb-2">
-              <span className="text-xs font-semibold uppercase tracking-wider">Selesai / Terjadwal</span>
+              <span className="text-xs font-semibold uppercase tracking-wider">Selesai</span>
               <div className="p-2 bg-red-50 text-red-600 rounded-lg">
                 <CheckCircle2 className="w-4 h-4" />
               </div>
