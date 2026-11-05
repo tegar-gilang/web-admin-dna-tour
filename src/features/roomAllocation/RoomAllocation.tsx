@@ -13,8 +13,8 @@ import { exportRoomListToPdf } from '@/lib/exportPdf';
 import { roomService } from '@/core/services/roomService';
 import { kloterService } from '@/core/services/kloterService';
 import { jamaahService } from '@/core/services/jamaahService';
-import { 
-  BedDouble, Plus, Download, Trash2, Edit2, 
+import {
+  BedDouble, Plus, Download, Trash2, Edit2,
   Building2, Users, UserPlus, AlertCircle, X, Search, FileText,
   CheckCircle2, Hotel, ArrowRight, UserCheck, Check, Sparkles, Filter,
   Phone, Calendar, ChevronRight, Layers, Eye
@@ -22,10 +22,10 @@ import {
 
 export default function RoomAllocation() {
 
-// ==========================================
-// FITUR: ROOMALLOCATION
-// Komponen utama untuk fitur ROOMALLOCATION
-// ==========================================
+  // ==========================================
+  // FITUR: ROOMALLOCATION
+  // Komponen utama untuk fitur ROOMALLOCATION
+  // ==========================================
 
   const {
     rooms,
@@ -228,7 +228,7 @@ export default function RoomAllocation() {
 
   // Rooms in current location
   const kloterLocationRooms = useMemo(() => {
-    return rooms.filter(r => 
+    return rooms.filter(r =>
       matchedKloterNames.has(r.kloter) && r.hotelLocation === selectedHotelLocation
     );
   }, [rooms, matchedKloterNames, selectedHotelLocation]);
@@ -250,8 +250,8 @@ export default function RoomAllocation() {
         const query = searchTerm.toLowerCase();
         const matchesRoomLabel = r.roomLabel.toLowerCase().includes(query);
         const matchesRoomNumber = (r.roomNumber || '').toLowerCase().includes(query);
-        const matchesOccupant = r.occupants.some(o => 
-          o.name.toLowerCase().includes(query) || 
+        const matchesOccupant = r.occupants.some(o =>
+          o.name.toLowerCase().includes(query) ||
           (o.title && o.title.toLowerCase().includes(query)) ||
           String(o.age || '').includes(query)
         );
@@ -348,10 +348,10 @@ export default function RoomAllocation() {
           newRoomCategory === 'DOUBLE'
             ? 2
             : newRoomCategory === 'TRIPLE'
-            ? 3
-            : newRoomCategory === 'QUAD'
-            ? 4
-            : 5,
+              ? 3
+              : newRoomCategory === 'QUAD'
+                ? 4
+                : 5,
         gender: newRoomGender,
         notes: `Lokasi hotel: ${selectedHotelLocation}`,
       });
@@ -416,74 +416,74 @@ export default function RoomAllocation() {
 
   // Handle Add Occupant
   const handleAddOccupant = async () => {
-  if (!targetRoomId) return;
+    if (!targetRoomId) return;
 
-  let title: 'MR' | 'MRS' | 'MISS' | 'MSTR' = customTitle;
-  let name = customName.trim().toUpperCase();
-  let age: number | string = customAge;
-  let jamaahId: string | undefined;
+    let title: 'MR' | 'MRS' | 'MISS' | 'MSTR' = customTitle;
+    let name = customName.trim().toUpperCase();
+    let age: number | string = customAge;
+    let jamaahId: string | undefined;
 
-  if (selectedPilgrimId) {
-    const p = pilgrims.find(item => item.id === selectedPilgrimId);
+    if (selectedPilgrimId) {
+      const p = pilgrims.find(item => item.id === selectedPilgrimId);
 
-    if (p) {
-      title =
-        p.gender === 'Laki-laki' || p.gender === 'L'
-          ? 'MR'
-          : 'MRS';
+      if (p) {
+        title =
+          p.gender === 'Laki-laki' || p.gender === 'L'
+            ? 'MR'
+            : 'MRS';
 
-      name = p.name.toUpperCase();
-      age = p.age;
-      jamaahId = p.backendId;
+        name = p.name.toUpperCase();
+        age = p.age;
+        jamaahId = p.backendId;
+      }
     }
-  }
 
-  if (!name) {
-    toast("Nama penghuni wajib diisi.", "error");
-    return;
-  }
-
-  if (selectedPilgrimId && !jamaahId) {
-    toast("ID backend jamaah tidak ditemukan.", "error");
-    return;
-  }
-
-  try {
-    await roomService.addOccupant(
-    targetRoomId,
-    {
-      jamaah_id: jamaahId,
-      title,
-      occupant_name: name,
-      age: age ? Number(age) : null,
+    if (!name) {
+      toast("Nama penghuni wajib diisi.", "error");
+      return;
     }
-  );
 
-  if (!selectedGroupObj?.backendId) {
-    throw new Error("ID backend kloter tidak ditemukan.");
-  }
+    if (selectedPilgrimId && !jamaahId) {
+      toast("ID backend jamaah tidak ditemukan.", "error");
+      return;
+    }
 
-  const latestRooms = await roomService.getRooms(
-    selectedGroupObj.backendId
-  );
+    try {
+      await roomService.addOccupant(
+        targetRoomId,
+        {
+          jamaah_id: jamaahId,
+          title,
+          occupant_name: name,
+          age: age ? Number(age) : null,
+        }
+      );
 
-  setRooms(latestRooms);
+      if (!selectedGroupObj?.backendId) {
+        throw new Error("ID backend kloter tidak ditemukan.");
+      }
 
-    setIsAddOccupantOpen(false);
-    setSelectedPilgrimId('');
-    setCustomName('');
-    setCustomAge('');
+      const latestRooms = await roomService.getRooms(
+        selectedGroupObj.backendId
+      );
 
-    toast(`Penghuni ${name} berhasil ditambahkan ke kamar.`, "success");
-  } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Gagal menambahkan penghuni ke kamar.";
+      setRooms(latestRooms);
 
-    toast(message, "error");
-  }
-};
+      setIsAddOccupantOpen(false);
+      setSelectedPilgrimId('');
+      setCustomName('');
+      setCustomAge('');
+
+      toast(`Penghuni ${name} berhasil ditambahkan ke kamar.`, "success");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Gagal menambahkan penghuni ke kamar.";
+
+      toast(message, "error");
+    }
+  };
   // Handle Save Edit Occupant
   const handleSaveEditOccupant = async () => {
     if (!editingRoomId || !editingOccupant) return;
@@ -564,9 +564,9 @@ export default function RoomAllocation() {
         rooms.map(r =>
           r.backendId === room.backendId
             ? {
-                ...r,
-                roomNumber: editingRoomNoVal.trim(),
-              }
+              ...r,
+              roomNumber: editingRoomNoVal.trim(),
+            }
             : r
         )
       );
@@ -586,7 +586,7 @@ export default function RoomAllocation() {
   // Export to Excel matching the exact layout
   const handleExportExcel = () => {
     const excelRows: any[] = [];
-    
+
     kloterLocationRooms.forEach((room) => {
       if (room.occupants.length === 0) {
         excelRows.push({
@@ -613,7 +613,7 @@ export default function RoomAllocation() {
 
     const filename = `Roomlist_${selectedKloter.replace(/\s+/g, '_')}_Hotel_${selectedHotelLocation}_${periodTitle.replace(/\s+/g, '_')}`;
     const headerTitle = `Room List ${periodTitle} - ${currentHotelName.toUpperCase()} (${selectedKloter.toUpperCase()})`;
-    
+
     exportToExcel(excelRows, filename, headerTitle);
     toast("Data Room List berhasil diexport ke Excel.", "success");
   };
@@ -655,8 +655,8 @@ export default function RoomAllocation() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={handleExportPdf}
               className="text-xs h-10 font-semibold text-red-700 border-red-200 bg-red-50/50 hover:bg-red-50 flex-1 sm:flex-none justify-center px-4 rounded-xl cursor-pointer shadow-2xs"
               title="Cetak & Download Dokumen PDF Room List"
@@ -665,8 +665,8 @@ export default function RoomAllocation() {
               Cetak PDF
             </Button>
 
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={handleExportExcel}
               className="text-xs h-10 font-semibold text-gray-700 border-gray-200 bg-white hover:bg-gray-50 flex-1 sm:flex-none justify-center px-4 rounded-xl cursor-pointer shadow-2xs"
             >
@@ -674,8 +674,8 @@ export default function RoomAllocation() {
               Export Excel
             </Button>
 
-            <Button 
-              onClick={() => setIsAddRoomOpen(true)} 
+            <Button
+              onClick={() => setIsAddRoomOpen(true)}
               className="bg-[#740A03] hover:bg-[#580802] text-white font-semibold text-xs h-10 px-4 rounded-xl shadow-2xs flex-1 sm:flex-none justify-center cursor-pointer"
             >
               <Plus className="w-4 h-4 mr-1.5" />
@@ -735,9 +735,8 @@ export default function RoomAllocation() {
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">BELUM DITEMPATKAN</p>
-                <h3 className={`text-2xl sm:text-[26px] font-bold tracking-tight mt-1 ${
-                  unassignedPilgrims.length > 0 ? 'text-amber-600' : 'text-gray-900'
-                }`}>
+                <h3 className={`text-2xl sm:text-[26px] font-bold tracking-tight mt-1 ${unassignedPilgrims.length > 0 ? 'text-amber-600' : 'text-gray-900'
+                  }`}>
                   {unassignedPilgrims.length} <span className="text-sm font-normal text-gray-500">Jamaah</span>
                 </h3>
               </div>
@@ -776,11 +775,11 @@ export default function RoomAllocation() {
       <div className="bg-white border border-gray-200/80 rounded-2xl p-5 shadow-2xs space-y-4 print:hidden">
         {/* Row 1: Kloter Filter (Left) & Hotel Location + Hotel Name + Periode (Right) */}
         <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 pb-2 sm:pb-3">
-          
+
           {/* Kloter Select */}
           <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 h-10 w-full sm:w-[260px] shrink-0">
             <Users className="w-4 h-4 text-gray-400 shrink-0" />
-            <select 
+            <select
               value={selectedKloter}
               onChange={(e) => handleKloterChange(e.target.value)}
               className="w-full bg-transparent border-none text-xs font-bold text-gray-900 focus:outline-none cursor-pointer truncate"
@@ -801,11 +800,10 @@ export default function RoomAllocation() {
               <button
                 type="button"
                 onClick={() => setSelectedHotelLocation('Makkah')}
-                className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
-                  selectedHotelLocation === 'Makkah' 
-                    ? 'bg-white text-emerald-800 shadow-2xs' 
+                className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${selectedHotelLocation === 'Makkah'
+                    ? 'bg-white text-emerald-800 shadow-2xs'
                     : 'text-gray-500 hover:text-gray-800'
-                }`}
+                  }`}
               >
                 <Building2 className="w-3.5 h-3.5 text-emerald-600" />
                 Makkah
@@ -813,11 +811,10 @@ export default function RoomAllocation() {
               <button
                 type="button"
                 onClick={() => setSelectedHotelLocation('Madinah')}
-                className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
-                  selectedHotelLocation === 'Madinah' 
-                    ? 'bg-white text-emerald-800 shadow-2xs' 
+                className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${selectedHotelLocation === 'Madinah'
+                    ? 'bg-white text-emerald-800 shadow-2xs'
                     : 'text-gray-500 hover:text-gray-800'
-                }`}
+                  }`}
               >
                 <Building2 className="w-3.5 h-3.5 text-emerald-600" />
                 Madinah
@@ -827,7 +824,7 @@ export default function RoomAllocation() {
             {/* Hotel Name Input */}
             <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 h-10 min-w-[220px] flex-1 sm:flex-none">
               <Hotel className="w-4 h-4 text-gray-400 shrink-0" />
-              <Input 
+              <Input
                 value={currentHotelName}
                 onChange={(e) => setCurrentHotelName(e.target.value)}
                 className="h-8 text-xs font-bold text-gray-900 bg-transparent border-none p-0 focus-visible:ring-0"
@@ -839,7 +836,7 @@ export default function RoomAllocation() {
             {/* Period Input (Tepat Di Sebelah Nama Hotel) */}
             <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 h-10 min-w-[150px] shrink-0">
               <Calendar className="w-4 h-4 text-gray-400 shrink-0" />
-              <Input 
+              <Input
                 value={periodTitle}
                 onChange={(e) => setPeriodTitle(e.target.value)}
                 className="h-8 text-xs font-bold text-gray-900 bg-transparent border-none p-0 focus-visible:ring-0 w-28"
@@ -854,14 +851,14 @@ export default function RoomAllocation() {
         <div className="flex items-center justify-between gap-3 pt-7 sm:pt-9 border-t border-gray-100">
           <div className="relative w-full sm:w-[320px]">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <Input 
-              placeholder="Cari penghuni atau no. kamar..." 
+            <Input
+              placeholder="Cari penghuni atau no. kamar..."
               className="pl-9.5 pr-8 bg-gray-50/70 border-gray-200 text-xs sm:text-sm h-10 rounded-xl focus:border-emerald-500 focus:bg-white"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
             {searchTerm && (
-              <button 
+              <button
                 onClick={() => setSearchTerm("")}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer"
               >
@@ -873,19 +870,18 @@ export default function RoomAllocation() {
 
         {/* Row 3: Filter Tipe 1 Baris Ke Samping (Di Bawah Search) & Info Kloter/Terdaftar Segaris */}
         <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between gap-3 pt-3 border-t border-gray-100">
-          
+
           {/* Room Category Tabs / Filter Pills - 1 Baris Ke Samping */}
           <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar w-full xl:w-auto py-1">
             <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mr-1 whitespace-nowrap shrink-0">Filter Tipe:</span>
-            
+
             <button
               type="button"
               onClick={() => setCategoryFilter('ALL')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-                categoryFilter === 'ALL'
+              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap shrink-0 ${categoryFilter === 'ALL'
                   ? 'bg-gray-900 text-white shadow-2xs'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
+                }`}
             >
               Semua ({kloterLocationRooms.length})
             </button>
@@ -893,11 +889,10 @@ export default function RoomAllocation() {
             <button
               type="button"
               onClick={() => setCategoryFilter('DOUBLE')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
-                categoryFilter === 'DOUBLE'
+              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${categoryFilter === 'DOUBLE'
                   ? 'bg-blue-600 text-white shadow-2xs'
                   : 'bg-blue-50 border border-blue-200 text-blue-900 hover:bg-blue-100'
-              }`}
+                }`}
             >
               <span>Double (2 Bed):</span>
               <span>{roomCategoryCounts.DOUBLE}</span>
@@ -906,11 +901,10 @@ export default function RoomAllocation() {
             <button
               type="button"
               onClick={() => setCategoryFilter('TRIPLE')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
-                categoryFilter === 'TRIPLE'
+              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${categoryFilter === 'TRIPLE'
                   ? 'bg-purple-600 text-white shadow-2xs'
                   : 'bg-purple-50 border border-purple-200 text-purple-900 hover:bg-purple-100'
-              }`}
+                }`}
             >
               <span>Triple (3 Bed):</span>
               <span>{roomCategoryCounts.TRIPLE}</span>
@@ -919,11 +913,10 @@ export default function RoomAllocation() {
             <button
               type="button"
               onClick={() => setCategoryFilter('QUAD')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
-                categoryFilter === 'QUAD'
+              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${categoryFilter === 'QUAD'
                   ? 'bg-emerald-600 text-white shadow-2xs'
                   : 'bg-emerald-50 border border-emerald-200 text-emerald-900 hover:bg-emerald-100'
-              }`}
+                }`}
             >
               <span>Quad (4 Bed):</span>
               <span>{roomCategoryCounts.QUAD}</span>
@@ -932,11 +925,10 @@ export default function RoomAllocation() {
             <button
               type="button"
               onClick={() => setCategoryFilter('QUINT')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
-                categoryFilter === 'QUINT'
+              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${categoryFilter === 'QUINT'
                   ? 'bg-amber-600 text-white shadow-2xs'
                   : 'bg-amber-50 border border-amber-200 text-amber-900 hover:bg-amber-100'
-              }`}
+                }`}
             >
               <span>Quint (5 Bed):</span>
               <span>{roomCategoryCounts.QUINT}</span>
@@ -945,11 +937,10 @@ export default function RoomAllocation() {
             <button
               type="button"
               onClick={() => setCategoryFilter('EMPTY')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-                categoryFilter === 'EMPTY'
+              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer whitespace-nowrap shrink-0 ${categoryFilter === 'EMPTY'
                   ? 'bg-rose-600 text-white shadow-2xs'
                   : 'bg-rose-50 border border-rose-200 text-rose-800 hover:bg-rose-100'
-              }`}
+                }`}
             >
               Kamar Kosong ({kloterLocationRooms.filter(r => r.occupants.length === 0).length})
             </button>
@@ -998,35 +989,34 @@ export default function RoomAllocation() {
                   room.occupants.length > 0
                     ? room.occupants
                     : [
-                        {
-                          id: `empty-${room.id}`,
-                          backendId: '',
-                          no: 0,
-                          title: 'MR',
-                          name: '',
-                          age: '',
-                        },
-                      ];
+                      {
+                        id: `empty-${room.id}`,
+                        backendId: '',
+                        no: 0,
+                        title: 'MR',
+                        name: '',
+                        age: '',
+                      },
+                    ];
                 const rowSpan = occupants.length;
                 const maxCap = room.category === 'DOUBLE' ? 2 : room.category === 'TRIPLE' ? 3 : room.category === 'QUAD' ? 4 : 5;
                 const isFull = room.occupants.length >= maxCap;
 
                 return occupants.map((occ, idx) => (
-                  <tr 
+                  <tr
                     key={`${room.id}-${occ.id || idx}`}
                     className="hover:bg-gray-50/60 transition-colors group"
                   >
                     {/* ROOM Name (RowSpan for first occupant) */}
                     {idx === 0 && (
-                      <td 
-                        rowSpan={rowSpan} 
+                      <td
+                        rowSpan={rowSpan}
                         className="px-4 py-3.5 font-semibold text-gray-900 align-top bg-white border-r border-gray-100"
                       >
                         <div className="flex flex-col gap-1.5">
                           <span className="font-bold text-xs text-gray-900 uppercase tracking-tight">{room.roomLabel}</span>
-                          <span className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-md w-max ${
-                            isFull ? 'bg-gray-100 text-gray-600' : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                          }`}>
+                          <span className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-md w-max ${isFull ? 'bg-gray-100 text-gray-600' : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                            }`}>
                             {room.occupants.length}/{maxCap} Bed
                           </span>
                           {!isFull && (
@@ -1048,8 +1038,8 @@ export default function RoomAllocation() {
 
                     {/* NO.ROOM Hotel (RowSpan for first occupant) */}
                     {idx === 0 && (
-                      <td 
-                        rowSpan={rowSpan} 
+                      <td
+                        rowSpan={rowSpan}
                         className="px-4 py-3.5 align-top bg-white border-r border-gray-100"
                       >
                         <div className="flex items-center justify-between gap-1 group/room">
@@ -1080,11 +1070,10 @@ export default function RoomAllocation() {
                     {/* TITLE (MR, MRS, MISS, MSTR) */}
                     <td className="px-3 py-3 text-center">
                       {occ.title ? (
-                        <span className={`inline-block px-2 py-0.5 text-[10px] font-bold rounded-md ${
-                          occ.title === 'MR' || occ.title === 'MSTR'
-                            ? 'bg-blue-50 text-blue-700 border border-blue-200' 
+                        <span className={`inline-block px-2 py-0.5 text-[10px] font-bold rounded-md ${occ.title === 'MR' || occ.title === 'MSTR'
+                            ? 'bg-blue-50 text-blue-700 border border-blue-200'
                             : 'bg-rose-50 text-rose-700 border border-rose-200'
-                        }`}>
+                          }`}>
                           {occ.title}
                         </span>
                       ) : '-'}
@@ -1121,56 +1110,56 @@ export default function RoomAllocation() {
                             >
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
-                              <ConfirmDeleteButton
-                                variant="ghost"
-                                iconOnly
-                                onConfirm={async () => {
-                                  try {
-                                    const roomData = rooms.find(
-                                      r => r.id === room.id || r.backendId === room.id
-                                    );
+                            <ConfirmDeleteButton
+                              variant="ghost"
+                              iconOnly
+                              onConfirm={async () => {
+                                try {
+                                  const roomData = rooms.find(
+                                    r => r.id === room.id || r.backendId === room.id
+                                  );
 
-                                    if (!roomData?.backendId) {
-                                      toast("ID backend kamar tidak ditemukan.", "error");
-                                      return;
-                                    }
-
-                                    if (!occ.backendId) {
-                                      toast("ID backend penghuni tidak ditemukan.", "error");
-                                      return;
-                                    }
-
-                                    await roomService.removeOccupant(
-                                      roomData.backendId,
-                                      occ.backendId
-                                    );
-
-                                    if (!selectedGroupObj?.backendId) {
-                                      throw new Error("ID backend kloter tidak ditemukan.");
-                                    }
-
-                                    const latestRooms = await roomService.getRooms(
-                                      selectedGroupObj.backendId
-                                    );
-
-                                    setRooms(latestRooms);
-
-                                    toast(
-                                      `Penghuni ${occ.name} dikeluarkan dari kamar.`,
-                                      "success"
-                                    );
-                                  } catch (error) {
-                                    const message =
-                                      error instanceof Error
-                                        ? error.message
-                                        : "Gagal mengeluarkan penghuni dari kamar.";
-
-                                    toast(message, "error");
+                                  if (!roomData?.backendId) {
+                                    toast("ID backend kamar tidak ditemukan.", "error");
+                                    return;
                                   }
-                                }}
-                                className="text-gray-400 hover:text-red-600 p-1.5 h-auto rounded-lg hover:bg-red-50 cursor-pointer transition-colors"
-                                title="Keluarkan dari Kamar"
-                              />
+
+                                  if (!occ.backendId) {
+                                    toast("ID backend penghuni tidak ditemukan.", "error");
+                                    return;
+                                  }
+
+                                  await roomService.removeOccupant(
+                                    roomData.backendId,
+                                    occ.backendId
+                                  );
+
+                                  if (!selectedGroupObj?.backendId) {
+                                    throw new Error("ID backend kloter tidak ditemukan.");
+                                  }
+
+                                  const latestRooms = await roomService.getRooms(
+                                    selectedGroupObj.backendId
+                                  );
+
+                                  setRooms(latestRooms);
+
+                                  toast(
+                                    `Penghuni ${occ.name} dikeluarkan dari kamar.`,
+                                    "success"
+                                  );
+                                } catch (error) {
+                                  const message =
+                                    error instanceof Error
+                                      ? error.message
+                                      : "Gagal mengeluarkan penghuni dari kamar.";
+
+                                  toast(message, "error");
+                                }
+                              }}
+                              className="text-gray-400 hover:text-red-600 p-1.5 h-auto rounded-lg hover:bg-red-50 cursor-pointer transition-colors"
+                              title="Keluarkan dari Kamar"
+                            />
                           </>
                         ) : (
                           <ConfirmDeleteButton
@@ -1219,37 +1208,35 @@ export default function RoomAllocation() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-3">
-              <div>
-                <label className="font-semibold text-gray-700 mb-1.5 block text-xs">
-                  Gender Kamar
-                </label>
+            <div>
+              <label className="font-semibold text-gray-700 mb-1.5 block text-xs">
+                Gender Kamar
+              </label>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setNewRoomGender('L')}
-                    className={`p-3 rounded-xl border text-xs font-bold transition-all text-center cursor-pointer ${
-                      newRoomGender === 'L'
-                        ? 'bg-[#740A03] text-white border-[#740A03] shadow-2xs'
-                        : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setNewRoomGender('L')}
+                  className={`p-3 rounded-xl border text-xs font-bold transition-all text-center cursor-pointer ${newRoomGender === 'L'
+                      ? 'bg-[#740A03] text-white border-[#740A03] shadow-2xs'
+                      : 'border-gray-200 text-gray-700 hover:bg-gray-50'
                     }`}
-                  >
-                    Laki-laki
-                  </button>
+                >
+                  Laki-laki
+                </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setNewRoomGender('P')}
-                    className={`p-3 rounded-xl border text-xs font-bold transition-all text-center cursor-pointer ${
-                      newRoomGender === 'P'
-                        ? 'bg-[#740A03] text-white border-[#740A03] shadow-2xs'
-                        : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+                <button
+                  type="button"
+                  onClick={() => setNewRoomGender('P')}
+                  className={`p-3 rounded-xl border text-xs font-bold transition-all text-center cursor-pointer ${newRoomGender === 'P'
+                      ? 'bg-[#740A03] text-white border-[#740A03] shadow-2xs'
+                      : 'border-gray-200 text-gray-700 hover:bg-gray-50'
                     }`}
-                  >
-                    Perempuan
-                  </button>
-                </div>
+                >
+                  Perempuan
+                </button>
               </div>
+            </div>
             <div>
               <label className="font-semibold text-gray-700 mb-1.5 block text-xs">Tipe / Kategori Kamar</label>
               <div className="grid grid-cols-2 gap-2">
@@ -1258,11 +1245,10 @@ export default function RoomAllocation() {
                     key={cat}
                     type="button"
                     onClick={() => setNewRoomCategory(cat)}
-                    className={`p-3 rounded-xl border text-xs font-bold transition-all text-center cursor-pointer ${
-                      newRoomCategory === cat 
-                        ? 'bg-[#740A03] text-white border-[#740A03] shadow-2xs' 
+                    className={`p-3 rounded-xl border text-xs font-bold transition-all text-center cursor-pointer ${newRoomCategory === cat
+                        ? 'bg-[#740A03] text-white border-[#740A03] shadow-2xs'
                         : 'border-gray-200 text-gray-700 hover:bg-gray-50'
-                    }`}
+                      }`}
                   >
                     <div>{cat}</div>
                     <div className="text-[10px] font-normal opacity-80 mt-0.5">
@@ -1274,7 +1260,7 @@ export default function RoomAllocation() {
             </div>
             <div>
               <label className="font-semibold text-gray-700 mb-1.5 block text-xs">Nomor Kamar Hotel (Opsional)</label>
-              <Input 
+              <Input
                 value={newRoomNumber}
                 onChange={(e) => setNewRoomNumber(e.target.value)}
                 placeholder="Contoh: 501, 1204"
@@ -1316,8 +1302,10 @@ export default function RoomAllocation() {
           <div className="space-y-4 py-3">
             {unassignedPilgrims.length > 0 && (
               <div>
-                <label className="font-semibold text-gray-700 mb-1.5 block text-xs">
-                  Pilih dari Jamaah Kloter {selectedKloter} ({unassignedPilgrims.length} Belum Ditempatkan)
+                <label className="form-label">
+                  Pilih dari Jamaah Kloter {selectedKloter}
+                  <br />
+                  ({unassignedPilgrims.length} Belum Ditempatkan)
                 </label>
                 <select
                   value={selectedPilgrimId}
@@ -1362,7 +1350,7 @@ export default function RoomAllocation() {
                 </div>
                 <div className="col-span-2">
                   <label className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block mb-1">Nama Lengkap</label>
-                  <Input 
+                  <Input
                     value={customName}
                     onChange={(e) => setCustomName(e.target.value)}
                     placeholder="NAMA LENGKAP"
@@ -1372,7 +1360,7 @@ export default function RoomAllocation() {
               </div>
               <div>
                 <label className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block mb-1">Usia (Tahun)</label>
-                <Input 
+                <Input
                   value={customAge}
                   onChange={(e) => setCustomAge(e.target.value)}
                   placeholder="Contoh: 48"
@@ -1419,7 +1407,7 @@ export default function RoomAllocation() {
                 </div>
                 <div className="col-span-2">
                   <label className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block mb-1">Nama Lengkap</label>
-                  <Input 
+                  <Input
                     value={editingOccupant.name}
                     onChange={(e) => setEditingOccupant({ ...editingOccupant, name: e.target.value.toUpperCase() })}
                     className="h-9.5 text-xs rounded-xl uppercase font-bold"
@@ -1428,7 +1416,7 @@ export default function RoomAllocation() {
               </div>
               <div>
                 <label className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block mb-1">Usia (Tahun)</label>
-                <Input 
+                <Input
                   value={editingOccupant.age || ''}
                   onChange={(e) => setEditingOccupant({ ...editingOccupant, age: e.target.value })}
                   className="h-9.5 text-xs rounded-xl font-bold"
@@ -1458,7 +1446,7 @@ export default function RoomAllocation() {
           </DialogHeader>
           <div className="py-3">
             <label className="font-semibold text-gray-700 mb-1.5 block text-xs">Nomor Kamar Hotel</label>
-            <Input 
+            <Input
               value={editingRoomNoVal}
               onChange={(e) => setEditingRoomNoVal(e.target.value)}
               placeholder="Contoh: 501, 1204"
