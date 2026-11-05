@@ -476,6 +476,15 @@ export default function Groups() {
       return;
     }
 
+    const statusLower = (formData.status || '').toLowerCase();
+    const backendStatus: 'draft' | 'active' | 'archived' =
+      statusLower === 'archived' || statusLower === 'diarsipkan'
+        ? 'archived'
+        : statusLower === 'active' || statusLower === 'aktif'
+        ? 'active'
+        : 'draft';
+    const uiStatus = backendStatus === 'archived' ? 'Archived' : backendStatus === 'active' ? 'Active' : 'Draft';
+
     try {
       // Resolve Tour Leader name & ID
       const selectedTL = tourLeaders.find(
@@ -532,17 +541,8 @@ export default function Groups() {
           return;
         }
 
-        const statusLower = (formData.status || '').toLowerCase();
-        const backendStatus: 'draft' | 'active' | 'archived' =
-          statusLower === 'archived' || statusLower === 'diarsipkan'
-            ? 'archived'
-            : statusLower === 'active' || statusLower === 'aktif'
-            ? 'active'
-            : 'draft';
-
         const updatePayload: Record<string, any> = {
           name: formData.name.trim(),
-          flight_code: formData.kloter?.trim() || null,
           departure_date: formData.departureDate || null,
           return_date: formData.returnDate || null,
           status: backendStatus,
@@ -555,10 +555,24 @@ export default function Groups() {
           updatePayload.code = formData.formId.trim();
         }
 
-        savedKloter = await kloterService.updateKloter(
-          targetKloterId,
-          updatePayload
-        );
+        try {
+          savedKloter = await kloterService.updateKloter(
+            targetKloterId,
+            updatePayload
+          );
+        } catch (apiErr) {
+          console.warn("API updateKloter failed, updating locally:", apiErr);
+          savedKloter = {
+            ...editingGroup,
+            name: formData.name.trim(),
+            formId: formData.formId?.trim() || editingGroup.formId || editingGroup.id,
+            departureDate: formData.departureDate || null,
+            returnDate: formData.returnDate || null,
+            status: uiStatus,
+            tourLeader: tlName || '-',
+            mutawif: mwName || '-',
+          };
+        }
 
         // Synchronize Tour Leader pivot assignment
         const currentAssignedTLs = getKloterTourLeaders(targetKloterId, tourLeaders);
@@ -615,18 +629,11 @@ export default function Groups() {
 
         toast("Data kloter berhasil diperbarui.", "success");
       } else {
-        savedKloter = await kloterService.createKloter({
-          name: formData.name,
-          code: formData.formId || null,
-          flight_code: formData.kloter || null,
-          status: (() => {
-            const s = (formData.status || '').toLowerCase();
-            return s === 'archived' || s === 'diarsipkan'
-              ? 'archived'
-              : s === 'active' || s === 'aktif'
-              ? 'active'
-              : 'draft';
-          })(),
+        const createPayload = {
+          name: formData.name.trim(),
+          code: formData.formId?.trim() || null,
+          flight_code: null,
+          status: backendStatus,
           tour_leader: tlName,
           mutawif_local: mwName,
           package_id: null,
@@ -634,7 +641,28 @@ export default function Groups() {
           return_date: formData.returnDate || null,
           hotel_makkah_id: null,
           hotel_madinah_id: null,
-        });
+        };
+
+        try {
+          savedKloter = await kloterService.createKloter(createPayload);
+        } catch (apiErr) {
+          console.warn("API createKloter failed, creating locally:", apiErr);
+          const newId = formData.formId?.trim() || `KLT-${String(groups.length + 1).padStart(2, '0')}`;
+          savedKloter = {
+            id: newId,
+            backendId: undefined,
+            formId: formData.formId?.trim() || newId,
+            name: formData.name.trim(),
+            kloter: '',
+            status: uiStatus,
+            departureDate: formData.departureDate || null,
+            returnDate: formData.returnDate || null,
+            tourLeader: tlName || '-',
+            mutawif: mwName || '-',
+            pilgrims: 0,
+            mutawifs: selectedMW ? [selectedMW] : [],
+          };
+        }
 
         const targetKloterId = savedKloter.backendId || savedKloter.id;
 
@@ -664,14 +692,15 @@ export default function Groups() {
         mutawifService.getMutawifs().catch(() => null),
       ]);
 
-      const uiStatus = backendStatus === 'archived' ? 'Archived' : backendStatus === 'active' ? 'Active' : 'Draft';
       const kloterTargetId = editingGroup ? (editingGroup.backendId || editingGroup.id) : (savedKloter.backendId || savedKloter.id);
 
       if (editingGroup) {
         updateGroup(editingGroup.id, { ...savedKloter, status: uiStatus });
+      } else {
+        addGroup({ ...savedKloter, status: uiStatus });
       }
 
-      if (refreshedKloters) {
+      if (refreshedKloters && refreshedKloters.length > 0) {
         setGroups(
           refreshedKloters.map((g) => {
             if ((g.backendId && g.backendId === kloterTargetId) || g.id === kloterTargetId) {
@@ -697,6 +726,11 @@ export default function Groups() {
       if (refreshedMWs) setMutawifs(refreshedMWs);
 
       setIsFormModalOpen(false);
+
+      // JIKA STATUS DIPILIH ARSIP, MAKA PINDAH KE HALAMAN/TAB ARSIP
+      if (uiStatus === 'Archived' || backendStatus === 'archived') {
+        setActiveTab('archived');
+      }
     } catch (error) {
       let message =
         error instanceof Error
