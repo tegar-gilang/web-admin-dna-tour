@@ -95,3 +95,20 @@ export function formatDateIndo(value?: string | null): string {
 
   return `${d.getDate()} ${BULAN_INDONESIA[monthIdx]} ${d.getFullYear()}`;
 }
+
+// ============================================================
+// HELPER: FORMAT ANGKA RIBUAN DENGAN TITIK (.)
+// ============================================================
+// Contoh: 1000 -> "1.000", 30000000 -> "30.000.000"
+export function formatThousand(val?: number | string | null): string {
+  if (val === undefined || val === null || val === '') return '';
+  const str = String(val);
+  const digitsOnly = str.replace(/\D/g, '');
+  if (!digitsOnly) return '';
+  return digitsOnly.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
+export function unformatThousand(val?: string | null): string {
+  if (!val) return '';
+  return val.replace(/\D/g, '');
+}

@@ -1,4 +1,4 @@
-﻿﻿﻿import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { toast } from '@/lib/toast';
 import { registrationService } from '@/core/services/registrationService';
 import { packageService } from '@/core/services/packageService';
@@ -3768,7 +3768,7 @@ export default function Registration() {
                                 )
                             })
                           }
-                          placeholder="30000000"
+                          placeholder="30.000.000"
                           className={`h-12 rounded-xl text-lg ${
                             formData.totalAmount
                               ? 'font-bold text-gray-900'
@@ -3801,7 +3801,7 @@ export default function Registration() {
                                 )
                             })
                           }
-                          placeholder="10000000"
+                          placeholder="10.000.000"
                           className={`h-12 rounded-xl text-lg ${
                             formData.paidAmount
                               ? 'font-bold text-gray-900 border-[#00a859] bg-[#f0fdf4]'

@@ -1674,7 +1674,7 @@ const handleConfirmQuickPay = async () => {
                       type="number"
                       value={expenseForm.amount !== undefined && expenseForm.amount > 0 ? expenseForm.amount : ''}
                       onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value ? Number(e.target.value) : undefined })}
-                      placeholder="Cth. 5000000"
+                      placeholder="Cth. 5.000.000"
                       className={`h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base ${expenseForm.amount !== undefined && expenseForm.amount > 0 ? 'font-bold text-gray-900' : 'font-normal text-gray-400'} placeholder:text-gray-400 placeholder:font-normal px-4 sm:px-5 focus:ring-1 focus:ring-[#dc2626] focus:border-[#dc2626] w-full`}
                     />
                   </div>
@@ -1873,7 +1873,7 @@ const handleConfirmQuickPay = async () => {
                       type="number"
                       value={txForm.amount !== undefined && txForm.amount > 0 ? txForm.amount : ''}
                       onChange={(e) => setTxForm({ ...txForm, amount: e.target.value ? Number(e.target.value) : undefined })}
-                      placeholder="Cth. 10000000"
+                      placeholder="Cth. 10.000.000"
                       className={`h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base ${txForm.amount !== undefined && txForm.amount > 0 ? 'font-bold text-gray-900' : 'font-normal text-gray-400'} placeholder:text-gray-400 placeholder:font-normal px-4 sm:px-5 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859]`}
                     />
                   </div>
