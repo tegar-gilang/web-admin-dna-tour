@@ -135,6 +135,7 @@ export default function RoomAllocation() {
   const [deletingRoomId, setDeletingRoomId] = useState<string | null>(null);
 
   const [isAddOccupantOpen, setIsAddOccupantOpen] = useState<boolean>(false);
+  const [addOccupantMode, setAddOccupantMode] = useState<'kloter' | 'manual'>('kloter');
   const [targetRoomId, setTargetRoomId] = useState<string>('');
   const [selectedPilgrimId, setSelectedPilgrimId] = useState<string>('');
   const [customTitle, setCustomTitle] = useState<'MR' | 'MRS' | 'MISS' | 'MSTR'>('MR');
@@ -303,6 +304,10 @@ export default function RoomAllocation() {
 
   const occupancyRate = totalCapacity > 0 ? Math.round((totalOccupantsCount / totalCapacity) * 100) : 0;
 
+  const targetRoom = useMemo(() => {
+    return rooms.find(r => r.id === targetRoomId || r.backendId === targetRoomId);
+  }, [rooms, targetRoomId]);
+
   // Auto calculate total next sequential number
   const getNextSequentialNo = () => {
     let count = 0;
@@ -423,19 +428,27 @@ export default function RoomAllocation() {
     let age: number | string = customAge;
     let jamaahId: string | undefined;
 
-    if (selectedPilgrimId) {
+    if (addOccupantMode === 'kloter') {
+      if (!selectedPilgrimId) {
+        toast("Silakan pilih jamaah dari daftar kloter terlebih dahulu.", "error");
+        return;
+      }
       const p = pilgrims.find(item => item.id === selectedPilgrimId);
-
       if (p) {
-        title =
-          p.gender === 'Laki-laki' || p.gender === 'L'
-            ? 'MR'
-            : 'MRS';
-
+        title = p.gender === 'Laki-laki' || p.gender === 'L' ? 'MR' : 'MRS';
         name = p.name.toUpperCase();
         age = p.age;
         jamaahId = p.backendId;
       }
+    } else {
+      if (!customName.trim()) {
+        toast("Nama penghuni wajib diisi.", "error");
+        return;
+      }
+      title = customTitle;
+      name = customName.trim().toUpperCase();
+      age = customAge;
+      jamaahId = undefined;
     }
 
     if (!name) {
@@ -443,7 +456,7 @@ export default function RoomAllocation() {
       return;
     }
 
-    if (selectedPilgrimId && !jamaahId) {
+    if (addOccupantMode === 'kloter' && selectedPilgrimId && !jamaahId) {
       toast("ID backend jamaah tidak ditemukan.", "error");
       return;
     }
@@ -1024,6 +1037,10 @@ export default function RoomAllocation() {
                               type="button"
                               onClick={() => {
                                 setTargetRoomId(room.id);
+                                setSelectedPilgrimId('');
+                                setCustomName('');
+                                setCustomAge('');
+                                setAddOccupantMode(unassignedPilgrims.length > 0 ? 'kloter' : 'manual');
                                 setIsAddOccupantOpen(true);
                               }}
                               className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 text-[11px] font-bold text-white bg-[#00a859] hover:bg-[#008f4c] active:scale-95 rounded-lg shadow-2xs transition-all mt-1 print:hidden cursor-pointer w-max"
@@ -1293,88 +1310,215 @@ export default function RoomAllocation() {
 
       {/* Modal 2: Tambah Penghuni */}
       <Dialog open={isAddOccupantOpen} onOpenChange={setIsAddOccupantOpen}>
-        <DialogContent className="w-[95vw] sm:w-full max-w-md rounded-2xl p-6">
-          <DialogHeader>
-            <DialogTitle className="text-base font-bold text-gray-900">
-              Tambah Penghuni Kamar
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-3">
-            {unassignedPilgrims.length > 0 && (
+        <DialogContent className="w-[95vw] sm:w-full max-w-lg rounded-3xl p-6 sm:p-7 shadow-2xl border-0 overflow-hidden">
+          <DialogHeader className="pb-4 border-b border-gray-100">
+            <div className="flex items-center justify-between">
               <div>
-                <label className="form-label">
-                  Pilih dari Jamaah Kloter {selectedKloter}
-                  <br />
-                  ({unassignedPilgrims.length} Belum Ditempatkan)
-                </label>
-                <select
-                  value={selectedPilgrimId}
-                  onChange={(e) => {
-                    setSelectedPilgrimId(e.target.value);
-                    if (e.target.value) {
-                      const p = pilgrims.find(item => item.id === e.target.value);
-                      if (p) {
-                        setCustomTitle(p.gender === 'Laki-laki' || p.gender === 'L' ? 'MR' : 'MRS');
-                        setCustomName(p.name);
-                        setCustomAge(String(p.age || ''));
-                      }
-                    }
-                  }}
-                  className="w-full h-9.5 rounded-xl border border-gray-200 bg-gray-50 px-3 text-xs font-semibold text-gray-800 focus:outline-emerald-600"
-                >
-                  <option value="">-- Pilih Jamaah Kloter --</option>
-                  {unassignedPilgrims.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.gender === 'Laki-laki' || p.gender === 'L' ? 'L' : 'P'}, {p.age} th) - {p.passport}
-                    </option>
-                  ))}
-                </select>
+                <DialogTitle className="text-lg font-black text-gray-900 tracking-tight">
+                  Tambah Penghuni Kamar
+                </DialogTitle>
+                <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                    <BedDouble className="w-3.5 h-3.5 text-emerald-600" />
+                    {targetRoom?.roomLabel || 'Kamar'} {targetRoom?.roomNumber ? `• No. ${targetRoom.roomNumber}` : ''}
+                  </span>
+                  <span className="text-xs text-gray-500 font-medium">
+                    Tipe {targetRoom?.category || '-'} &bull; Terisi {targetRoom?.occupants.length || 0}/{(targetRoom?.category === 'DOUBLE' ? 2 : targetRoom?.category === 'TRIPLE' ? 3 : targetRoom?.category === 'QUAD' ? 4 : 5) || 4} Bed
+                  </span>
+                </div>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-4 py-3">
+            {/* Segmented Mode Selector: Dari Kloter vs Input Manual */}
+            <div className="grid grid-cols-2 p-1 bg-gray-100/90 rounded-2xl border border-gray-200/60 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setAddOccupantMode('kloter');
+                }}
+                className={`flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer select-none ${
+                  addOccupantMode === 'kloter'
+                    ? 'bg-white text-gray-900 shadow-2xs'
+                    : 'text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                <Users className={`w-4 h-4 ${addOccupantMode === 'kloter' ? 'text-emerald-600' : 'text-gray-400'}`} />
+                <span>Pilih dari Kloter</span>
+                {unassignedPilgrims.length > 0 && (
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                    addOccupantMode === 'kloter' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-600'
+                  }`}>
+                    {unassignedPilgrims.length}
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setAddOccupantMode('manual');
+                  setSelectedPilgrimId('');
+                }}
+                className={`flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer select-none ${
+                  addOccupantMode === 'manual'
+                    ? 'bg-white text-gray-900 shadow-2xs'
+                    : 'text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                <UserPlus className={`w-4 h-4 ${addOccupantMode === 'manual' ? 'text-emerald-600' : 'text-gray-400'}`} />
+                <span>Input Manual</span>
+              </button>
+            </div>
+
+            {/* TAB 1: PILIH DARI KLOTER */}
+            {addOccupantMode === 'kloter' && (
+              <div className="space-y-3.5 animate-fade-in">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+                      Jamaah {selectedKloter.toLowerCase().startsWith('kloter') ? selectedKloter : `Kloter ${selectedKloter}`}
+                    </label>
+                    <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-200">
+                      {unassignedPilgrims.length} Belum Dialokasikan
+                    </span>
+                  </div>
+
+                  {unassignedPilgrims.length > 0 ? (
+                    <div className="relative">
+                      <select
+                        value={selectedPilgrimId}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setSelectedPilgrimId(val);
+                          if (val) {
+                            const p = pilgrims.find(item => item.id === val);
+                            if (p) {
+                              setCustomTitle(p.gender === 'Laki-laki' || p.gender === 'L' ? 'MR' : 'MRS');
+                              setCustomName(p.name);
+                              setCustomAge(String(p.age || ''));
+                            }
+                          } else {
+                            setCustomName('');
+                            setCustomAge('');
+                          }
+                        }}
+                        className="w-full h-12 rounded-2xl border border-gray-300 bg-white px-4 text-xs sm:text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 cursor-pointer shadow-2xs"
+                      >
+                        <option value="" className="text-gray-400 font-normal">-- Pilih Jamaah dari Kloter --</option>
+                        {unassignedPilgrims.map(p => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} ({p.gender === 'Laki-laki' || p.gender === 'L' ? 'L' : 'P'}, {p.age || '-'} th) {p.passport && p.passport !== '-' ? `• Paspor: ${p.passport}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-medium">
+                      Seluruh jamaah di {selectedKloter.toLowerCase().startsWith('kloter') ? selectedKloter : `Kloter ${selectedKloter}`} sudah dialokasikan ke kamar. Jika ingin menambahkan penghuni khusus (mutawif, tamu, keluarga), silakan gunakan tab <strong>Input Manual</strong>.
+                    </div>
+                  )}
+                </div>
+
+                {/* Selected Pilgrim Card Preview */}
+                {selectedPilgrimId && (() => {
+                  const p = pilgrims.find(item => item.id === selectedPilgrimId);
+                  if (!p) return null;
+                  return (
+                    <div className="bg-gradient-to-br from-emerald-50/80 to-teal-50/40 border border-emerald-200/90 rounded-2xl p-4 flex items-center gap-3.5 shadow-2xs animate-fade-in">
+                      <div className="w-10 h-10 rounded-xl bg-[#00a859] text-white flex items-center justify-center font-black text-sm shrink-0 shadow-2xs">
+                        {p.name.charAt(0)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm text-gray-900 uppercase truncate">
+                            {p.name}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-white text-emerald-800 border border-emerald-200 shrink-0">
+                            {p.gender === 'Laki-laki' || p.gender === 'L' ? 'MR' : 'MRS'}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-gray-600 font-medium">
+                          <span>Usia: <strong className="text-gray-900">{p.age || '-'} Thn</strong></span>
+                          <span>&bull;</span>
+                          <span>Paspor: <strong className="font-mono text-gray-900">{p.passport || '-'}</strong></span>
+                        </div>
+                      </div>
+                      <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                        <CheckCircle2 className="w-4 h-4" />
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
-            <div className="pt-2 border-t border-gray-100">
-              <label className="font-semibold text-gray-700 mb-1.5 block text-xs">Atau Input Manual</label>
-              <div className="grid grid-cols-3 gap-2 mb-2">
-                <div>
-                  <label className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block mb-1">Title</label>
-                  <select
-                    value={customTitle}
-                    onChange={(e) => setCustomTitle(e.target.value as any)}
-                    className="w-full h-9.5 rounded-xl border border-gray-200 bg-gray-50 px-2 text-xs font-bold"
-                  >
-                    <option value="MR">MR</option>
-                    <option value="MRS">MRS</option>
-                    <option value="MISS">MISS</option>
-                    <option value="MSTR">MSTR</option>
-                  </select>
+            {/* TAB 2: INPUT MANUAL */}
+            {addOccupantMode === 'manual' && (
+              <div className="space-y-3.5 animate-fade-in">
+                <div className="p-3 rounded-2xl bg-gray-50 border border-gray-200 text-xs text-gray-600 leading-relaxed">
+                  Gunakan opsi ini jika penghuni kamar adalah mutawif lokal, pemandu tour, atau jamaah tambahan di luar kloter ini.
                 </div>
-                <div className="col-span-2">
-                  <label className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block mb-1">Nama Lengkap</label>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-[11px] text-gray-600 font-bold uppercase tracking-wider block mb-1.5">
+                      TITLE
+                    </label>
+                    <select
+                      value={customTitle}
+                      onChange={(e) => setCustomTitle(e.target.value as any)}
+                      className="w-full h-12 rounded-2xl border border-gray-300 bg-white px-3 text-sm font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-2xs"
+                    >
+                      <option value="MR">MR</option>
+                      <option value="MRS">MRS</option>
+                      <option value="MISS">MISS</option>
+                      <option value="MSTR">MSTR</option>
+                    </select>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="text-[11px] text-gray-600 font-bold uppercase tracking-wider block mb-1.5">
+                      NAMA LENGKAP *
+                    </label>
+                    <Input
+                      value={customName}
+                      onChange={(e) => setCustomName(e.target.value)}
+                      placeholder="Cth. AHMAD HIDAYAT"
+                      className="h-12 text-sm rounded-2xl border-gray-300 bg-white px-4 uppercase font-bold text-gray-900 placeholder:text-gray-400 placeholder:font-normal focus:ring-1 focus:ring-emerald-500 shadow-2xs"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[11px] text-gray-600 font-bold uppercase tracking-wider block mb-1.5">
+                    USIA (TAHUN)
+                  </label>
                   <Input
-                    value={customName}
-                    onChange={(e) => setCustomName(e.target.value)}
-                    placeholder="NAMA LENGKAP"
-                    className="h-9.5 text-xs rounded-xl uppercase font-bold"
+                    value={customAge}
+                    onChange={(e) => setCustomAge(e.target.value)}
+                    placeholder="Contoh: 48"
+                    className="h-12 text-sm rounded-2xl border-gray-300 bg-white px-4 font-bold text-gray-900 placeholder:text-gray-400 placeholder:font-normal focus:ring-1 focus:ring-emerald-500 shadow-2xs"
+                    type="number"
                   />
                 </div>
               </div>
-              <div>
-                <label className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block mb-1">Usia (Tahun)</label>
-                <Input
-                  value={customAge}
-                  onChange={(e) => setCustomAge(e.target.value)}
-                  placeholder="Contoh: 48"
-                  className="h-9.5 text-xs rounded-xl font-bold"
-                  type="number"
-                />
-              </div>
-            </div>
+            )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setIsAddOccupantOpen(false)} className="rounded-xl h-9.5 text-xs font-semibold cursor-pointer">
+
+          <DialogFooter className="pt-4 border-t border-gray-100 flex items-center justify-end gap-2.5">
+            <Button 
+              variant="outline" 
+              onClick={() => setIsAddOccupantOpen(false)} 
+              className="rounded-2xl h-11 px-6 text-sm font-bold text-gray-700 border-gray-300 hover:bg-gray-100 cursor-pointer shadow-2xs"
+            >
               Batal
             </Button>
-            <Button size="sm" onClick={handleAddOccupant} className="bg-[#740A03] hover:bg-[#580802] text-white rounded-xl h-9.5 text-xs font-semibold px-4 cursor-pointer">
+            <Button 
+              onClick={handleAddOccupant} 
+              className="bg-[#740A03] hover:bg-[#580802] text-white rounded-2xl h-11 px-7 text-sm font-bold shadow-2xs cursor-pointer active:scale-95 flex items-center gap-2"
+            >
+              <UserPlus className="w-4 h-4" />
               Simpan Penghuni
             </Button>
           </DialogFooter>
@@ -1383,21 +1527,23 @@ export default function RoomAllocation() {
 
       {/* Modal 3: Edit Penghuni */}
       <Dialog open={isEditOccupantOpen} onOpenChange={setIsEditOccupantOpen}>
-        <DialogContent className="w-[95vw] sm:w-full max-w-md rounded-2xl p-6">
-          <DialogHeader>
-            <DialogTitle className="text-base font-bold text-gray-900">
+        <DialogContent className="w-[95vw] sm:w-full max-w-lg rounded-3xl p-6 sm:p-7 shadow-2xl border-0 overflow-hidden">
+          <DialogHeader className="pb-4 border-b border-gray-100">
+            <DialogTitle className="text-lg font-black text-gray-900 tracking-tight">
               Edit Data Penghuni
             </DialogTitle>
           </DialogHeader>
           {editingOccupant && (
             <div className="space-y-4 py-3">
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block mb-1">Title</label>
+                  <label className="text-[11px] text-gray-600 font-bold uppercase tracking-wider block mb-1.5">
+                    TITLE
+                  </label>
                   <select
                     value={editingOccupant.title}
                     onChange={(e) => setEditingOccupant({ ...editingOccupant, title: e.target.value as any })}
-                    className="w-full h-9.5 rounded-xl border border-gray-200 bg-gray-50 px-2 text-xs font-bold"
+                    className="w-full h-12 rounded-2xl border border-gray-300 bg-white px-3 text-sm font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-2xs"
                   >
                     <option value="MR">MR</option>
                     <option value="MRS">MRS</option>
@@ -1405,31 +1551,44 @@ export default function RoomAllocation() {
                     <option value="MSTR">MSTR</option>
                   </select>
                 </div>
-                <div className="col-span-2">
-                  <label className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block mb-1">Nama Lengkap</label>
+                <div className="sm:col-span-2">
+                  <label className="text-[11px] text-gray-600 font-bold uppercase tracking-wider block mb-1.5">
+                    NAMA LENGKAP *
+                  </label>
                   <Input
                     value={editingOccupant.name}
                     onChange={(e) => setEditingOccupant({ ...editingOccupant, name: e.target.value.toUpperCase() })}
-                    className="h-9.5 text-xs rounded-xl uppercase font-bold"
+                    placeholder="NAMA LENGKAP"
+                    className="h-12 text-sm rounded-2xl border-gray-300 bg-white px-4 uppercase font-bold text-gray-900 placeholder:text-gray-400 placeholder:font-normal focus:ring-1 focus:ring-emerald-500 shadow-2xs"
                   />
                 </div>
               </div>
               <div>
-                <label className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block mb-1">Usia (Tahun)</label>
+                <label className="text-[11px] text-gray-600 font-bold uppercase tracking-wider block mb-1.5">
+                  USIA (TAHUN)
+                </label>
                 <Input
                   value={editingOccupant.age || ''}
                   onChange={(e) => setEditingOccupant({ ...editingOccupant, age: e.target.value })}
-                  className="h-9.5 text-xs rounded-xl font-bold"
+                  placeholder="Contoh: 48"
+                  className="h-12 text-sm rounded-2xl border-gray-300 bg-white px-4 font-bold text-gray-900 placeholder:text-gray-400 placeholder:font-normal focus:ring-1 focus:ring-emerald-500 shadow-2xs"
                   type="number"
                 />
               </div>
             </div>
           )}
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setIsEditOccupantOpen(false)} className="rounded-xl h-9.5 text-xs font-semibold cursor-pointer">
+          <DialogFooter className="pt-4 border-t border-gray-100 flex items-center justify-end gap-2.5">
+            <Button 
+              variant="outline" 
+              onClick={() => setIsEditOccupantOpen(false)} 
+              className="rounded-2xl h-11 px-6 text-sm font-bold text-gray-700 border-gray-300 hover:bg-gray-100 cursor-pointer shadow-2xs"
+            >
               Batal
             </Button>
-            <Button size="sm" onClick={handleSaveEditOccupant} className="bg-[#740A03] hover:bg-[#580802] text-white rounded-xl h-9.5 text-xs font-semibold px-4 cursor-pointer">
+            <Button 
+              onClick={handleSaveEditOccupant} 
+              className="bg-[#740A03] hover:bg-[#580802] text-white rounded-2xl h-11 px-7 text-sm font-bold shadow-2xs cursor-pointer active:scale-95 flex items-center gap-2"
+            >
               Simpan Perubahan
             </Button>
           </DialogFooter>
