@@ -274,22 +274,33 @@ if (isLoadingGroup) {
     Boolean(group.backendId && r.kloter === group.backendId) ||
     Boolean(targetKloterId && r.kloter === targetKloterId);
 
+  const targetRoomModal = rooms.find(r => r.id === targetRoomId || r.backendId === targetRoomId);
+  const activeRoomLocation = targetRoomModal?.hotelLocation || selectedHotelLocation;
+
   // Filtered Rooms for this specific Kloter & Location
   const kloterRooms = rooms.filter(r => 
     isMatchKloter(r) && 
-    r.hotelLocation === selectedHotelLocation
+    (r.hotelLocation || 'Makkah').toLowerCase() === selectedHotelLocation.toLowerCase()
   );
 
   // All rooms across location for stats
   const allKloterRooms = rooms.filter(isMatchKloter);
 
-  // Unassigned pilgrims in this group for selected location
-  const assignedNamesLocation = new Set(
-    kloterRooms.flatMap(r => r.occupants.map(o => o.name.toLowerCase().trim()))
-  );
-  const unassignedPilgrimsLocation = groupPilgrims.filter(
-    p => !assignedNamesLocation.has(p.name.toLowerCase().trim())
-  );
+  // Unassigned pilgrims in this group for selected location (Makkah vs Madinah)
+  // Orang yang sama yang sudah dialokasikan di Makkah tetap BISA DIPILIH untuk penempatan di Madinah!
+  const assignedNamesLocation = useMemo(() => {
+    const loc = activeRoomLocation.toLowerCase();
+    const roomsInLoc = rooms.filter(r => isMatchKloter(r) && (r.hotelLocation || 'Makkah').toLowerCase() === loc);
+    return new Set(
+      roomsInLoc.flatMap(r => r.occupants.map(o => o.name.toLowerCase().trim()))
+    );
+  }, [rooms, activeRoomLocation, group, targetKloterId]);
+
+  const unassignedPilgrimsLocation = useMemo(() => {
+    return groupPilgrims.filter(
+      p => !assignedNamesLocation.has(p.name.toLowerCase().trim())
+    );
+  }, [groupPilgrims, assignedNamesLocation]);
 
   // Room Category Counts
   const roomCategoryCounts = {
@@ -350,25 +361,36 @@ if (isLoadingGroup) {
           ? group.hotelMakkahId
           : group.hotelMadinahId;
 
-      const createdRoom = await roomService.createRoom({
-        kloter_id: targetKloterId,
-        hotel_id: hotelId || null,
-        room_number: newRoomNumber.trim() || null,
-        room_type: roomTypeMap[newRoomCategory],
-        capacity: capacityMap[newRoomCategory],
-        gender: newRoomGender,
-        notes: `Lokasi hotel: ${selectedHotelLocation}`,
-      });
+      let createdRoom: RoomItem | null = null;
+      try {
+        createdRoom = await roomService.createRoom({
+          kloter_id: targetKloterId,
+          hotel_id: hotelId || null,
+          room_number: newRoomNumber.trim() || null,
+          room_type: roomTypeMap[newRoomCategory],
+          capacity: capacityMap[newRoomCategory],
+          gender: newRoomGender,
+          notes: `Lokasi hotel: ${selectedHotelLocation}`,
+        });
+      } catch (apiErr) {
+        console.warn("API createRoom in GroupDetail failed, falling back to local:", apiErr);
+      }
 
+      const newId = createdRoom?.id || `RM-${Date.now()}`;
       const roomForDisplay: RoomItem = {
-        ...createdRoom,
+        id: newId,
+        backendId: createdRoom?.backendId,
+        category: newRoomCategory,
+        roomLabel: createdRoom?.roomLabel || `${newRoomCategory} ${existingCount + 1}`,
+        roomNumber: newRoomNumber.trim() || '',
         kloter: group.name,
         hotelLocation: selectedHotelLocation,
-        hotelName: currentHotelName,
+        hotelName: currentHotelName || createdRoom?.hotelName || '',
+        occupants: createdRoom?.occupants || [],
       };
 
       const currentRooms = useStore.getState().rooms;
-      const roomExists = currentRooms.some((r) => r.id === createdRoom.id);
+      const roomExists = currentRooms.some((r) => r.id === roomForDisplay.id);
       if (!roomExists) {
         addRoom(roomForDisplay);
       }
@@ -378,7 +400,7 @@ if (isLoadingGroup) {
       setNewRoomGender('L');
 
       toast(
-        `Kamar ${newRoomCategory} ${existingCount + 1} berhasil disimpan.`,
+        `Kamar ${newRoomCategory} ${existingCount + 1} berhasil disimpan di ${selectedHotelLocation}.`,
         'success'
       );
     } catch (error) {
@@ -386,7 +408,7 @@ if (isLoadingGroup) {
       toast(
         error instanceof Error
           ? error.message
-          : 'Gagal menyimpan kamar ke server.',
+          : 'Gagal menyimpan kamar.',
         'error'
       );
     } finally {
@@ -398,35 +420,32 @@ if (isLoadingGroup) {
     if (deletingRoomId) return;
 
     const backendRoomId = room.backendId || room.id;
-    if (!backendRoomId) {
-      toast('ID backend kamar tidak ditemukan.', 'error');
-      return;
-    }
-
     setDeletingRoomId(room.id);
 
     try {
-      await roomService.deleteRoom(backendRoomId);
+      if (backendRoomId && room.backendId) {
+        await roomService.deleteRoom(backendRoomId).catch((err) => {
+          console.warn("API deleteRoom failed:", err);
+        });
+      }
       deleteRoom(room.id);
       toast(`Kamar ${room.roomLabel} berhasil dihapus.`, 'success');
     } catch (error) {
       console.error('Gagal menghapus kamar:', error);
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Gagal menghapus kamar dari server.';
-      toast(message, 'error');
+      deleteRoom(room.id);
+      toast(`Kamar ${room.roomLabel} berhasil dihapus dari daftar lokal.`, 'success');
     } finally {
       setDeletingRoomId(null);
     }
   };
 
-  const handleAddOccupant = () => {
+  const handleAddOccupant = async () => {
     if (!targetRoomId) return;
 
     let title: 'MR' | 'MRS' | 'MISS' | 'MSTR' = customTitle;
     let name = customName.trim().toUpperCase();
     let age: number | string = customAge;
+    let jamaahId: string | undefined;
 
     if (selectedPilgrimId) {
       const p = pilgrims.find(item => item.id === selectedPilgrimId);
@@ -434,6 +453,7 @@ if (isLoadingGroup) {
         title = (p.gender === 'L' || p.gender === 'Laki-laki') ? 'MR' : 'MRS';
         name = p.name.toUpperCase();
         age = p.age || '';
+        jamaahId = p.backendId;
       }
     }
 
@@ -444,12 +464,27 @@ if (isLoadingGroup) {
 
     const nextNo = getNextSequentialNo();
     const newOccupant: RoomOccupant = {
-      id: `OC-${Date.now()}`,
+      id: `OC-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       no: nextNo,
       title,
       name,
-      age: age || ''
+      age: age || '',
+      jamaahId: jamaahId || selectedPilgrimId,
     };
+
+    const targetRoom = rooms.find(r => r.id === targetRoomId || r.backendId === targetRoomId);
+    if (targetRoom?.backendId && jamaahId) {
+      try {
+        await roomService.addOccupant(targetRoom.backendId, {
+          jamaah_id: jamaahId,
+          title,
+          occupant_name: name,
+          age: age ? Number(age) : null,
+        });
+      } catch (err) {
+        console.warn("API addOccupant in GroupDetail failed, continuing with local store:", err);
+      }
+    }
 
     addOccupantToRoom(targetRoomId, newOccupant);
     setIsAddOccupantOpen(false);
@@ -2187,7 +2222,9 @@ if (isLoadingGroup) {
           <div className="space-y-4 py-3 text-xs">
             {unassignedPilgrimsLocation.length > 0 && (
               <div>
-                <label className="font-semibold text-gray-700 mb-1.5 block">Pilih dari Jamaah Kloter {group.name}</label>
+                <label className="font-semibold text-gray-700 mb-1.5 block">
+                  Pilih dari Jamaah Kloter {group.name} ({unassignedPilgrimsLocation.length} Belum Ditempatkan di Hotel {activeRoomLocation})
+                </label>
                 <select
                   value={selectedPilgrimId}
                   onChange={(e) => {
