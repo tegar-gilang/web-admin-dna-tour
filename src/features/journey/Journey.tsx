@@ -197,7 +197,11 @@ export default function Journey() {
         (s.keterangan && s.keterangan.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (s.pic && s.pic.toLowerCase().includes(searchTerm.toLowerCase()));
 
-      const matchesCategory = filterCategory === 'all' || s.category === filterCategory;
+      const matchesCategory = filterCategory === 'all' || 
+        s.category === filterCategory ||
+        (filterCategory === 'perjalanan' && (s.category === 'transit' || s.category === 'ziyarah')) ||
+        (filterCategory === 'akomodasi' && s.category === 'hotel') ||
+        (filterCategory === 'isoma' && s.category === 'makan');
       const status = getScheduleStatus(s);
       const matchesStatus = filterStatus === 'all' || status === filterStatus;
       const matchesDate = filterDate ? s.date === filterDate : true;
@@ -218,36 +222,35 @@ export default function Journey() {
 
   // Category visual mapping
   const getCategoryBadge = (category?: ScheduleCategory) => {
-    switch (category) {
-      case 'ibadah':
-        return {
-          label: 'Ibadah',
-          bg: 'bg-red-50 text-red-800 border-red-200',
-          icon: <Compass className="w-3.5 h-3.5 mr-1 text-red-600" />
-        };
+    const cat = category?.toLowerCase();
+    switch (cat) {
+      case 'perjalanan':
+      case 'transit':
       case 'ziyarah':
         return {
-          label: 'Ziyarah / Tur',
-          bg: 'bg-amber-50 text-amber-800 border-amber-200',
-          icon: <MapPin className="w-3.5 h-3.5 mr-1 text-amber-600" />
-        };
-      case 'makan':
-        return {
-          label: 'Konsumsi',
-          bg: 'bg-rose-50 text-rose-800 border-rose-200',
-          icon: <Coffee className="w-3.5 h-3.5 mr-1 text-rose-600" />
-        };
-      case 'transit':
-        return {
-          label: 'Transit / Transport',
+          label: 'Perjalanan',
           bg: 'bg-blue-50 text-blue-800 border-blue-200',
           icon: <Plane className="w-3.5 h-3.5 mr-1 text-blue-600" />
         };
+      case 'ibadah':
+        return {
+          label: 'Ibadah',
+          bg: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+          icon: <Compass className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+        };
+      case 'akomodasi':
       case 'hotel':
         return {
-          label: 'Hotel / Check-in',
+          label: 'Akomodasi',
           bg: 'bg-purple-50 text-purple-800 border-purple-200',
           icon: <Building2 className="w-3.5 h-3.5 mr-1 text-purple-600" />
+        };
+      case 'isoma':
+      case 'makan':
+        return {
+          label: 'ISOMA',
+          bg: 'bg-amber-50 text-amber-800 border-amber-200',
+          icon: <Coffee className="w-3.5 h-3.5 mr-1 text-amber-600" />
         };
       case 'manasik':
         return {
@@ -257,7 +260,7 @@ export default function Journey() {
         };
       default:
         return {
-          label: 'Kegiatan',
+          label: category ? category.charAt(0).toUpperCase() + category.slice(1) : 'Kegiatan',
           bg: 'bg-gray-100 text-gray-800 border-gray-200',
           icon: <Calendar className="w-3.5 h-3.5 mr-1 text-gray-600" />
         };
@@ -648,12 +651,10 @@ export default function Journey() {
                       onChange={(e) => setFilterCategory(e.target.value)}
                     >
                       <option value="all">Semua Kategori</option>
+                      <option value="perjalanan">✈️ Perjalanan</option>
                       <option value="ibadah">🕌 Ibadah</option>
-                      <option value="ziyarah">🚌 Ziyarah / Tur</option>
-                      <option value="makan">🍽️ Konsumsi</option>
-                      <option value="transit">✈️ Transit / Penerbangan</option>
-                      <option value="hotel">🏨 Hotel / Check-in</option>
-                      <option value="manasik">📜 Manasik & Pengarahan</option>
+                      <option value="akomodasi">🏨 Akomodasi</option>
+                      <option value="isoma">🍽️ ISOMA</option>
                     </select>
                   </div>
 
@@ -1159,22 +1160,25 @@ export default function Journey() {
                   <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
                     KATEGORI
                   </label>
-                  <div className="sm:col-span-8 relative">
-                    <Input 
-                      list="journey-categories"
-                      value={formData.category || ''} 
-                      onChange={(e) => setFormData({...formData, category: e.target.value})} 
-                      placeholder="Pilih atau ketik kategori..." 
-                      className="h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base font-bold text-gray-900 placeholder:text-gray-400 placeholder:font-normal px-4 sm:px-5 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859] w-full"
-                    />
-                    <datalist id="journey-categories">
-                      <option value="ibadah" />
-                      <option value="ziyarah" />
-                      <option value="manasik" />
-                      <option value="transit" />
-                      <option value="hotel" />
-                      <option value="makan" />
-                    </datalist>
+                  <div className="sm:col-span-8">
+                    <select
+                      value={
+                        formData.category === 'hotel' 
+                          ? 'akomodasi' 
+                          : formData.category === 'makan' 
+                            ? 'isoma' 
+                            : (formData.category === 'transit' || formData.category === 'ziyarah') 
+                              ? 'perjalanan' 
+                              : formData.category || 'perjalanan'
+                      }
+                      onChange={(e) => setFormData({...formData, category: e.target.value})}
+                      className="h-12 sm:h-13 w-full rounded-2xl border border-gray-300 bg-white px-4 sm:px-5 text-base font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859] cursor-pointer"
+                    >
+                      <option value="perjalanan">Perjalanan</option>
+                      <option value="ibadah">Ibadah</option>
+                      <option value="akomodasi">Akomodasi</option>
+                      <option value="isoma">ISOMA</option>
+                    </select>
                   </div>
                 </div>
 
