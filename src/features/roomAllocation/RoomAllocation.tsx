@@ -1302,15 +1302,6 @@ export default function RoomAllocation() {
                 <DialogTitle className="text-lg font-black text-gray-900 tracking-tight">
                   Tambah Penghuni Kamar
                 </DialogTitle>
-                <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                    <BedDouble className="w-3.5 h-3.5 text-emerald-600" />
-                    {targetRoom?.roomLabel || 'Kamar'} {targetRoom?.roomNumber ? `• No. ${targetRoom.roomNumber}` : ''}
-                  </span>
-                  <span className="text-xs text-gray-500 font-medium">
-                    Tipe {targetRoom?.category || '-'} &bull; Terisi {targetRoom?.occupants.length || 0}/{(targetRoom?.category === 'DOUBLE' ? 2 : targetRoom?.category === 'TRIPLE' ? 3 : targetRoom?.category === 'QUAD' ? 4 : 5) || 4} Bed
-                  </span>
-                </div>
               </div>
             </div>
           </DialogHeader>
