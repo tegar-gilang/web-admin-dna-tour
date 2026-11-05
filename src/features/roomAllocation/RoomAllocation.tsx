@@ -135,7 +135,6 @@ export default function RoomAllocation() {
   const [deletingRoomId, setDeletingRoomId] = useState<string | null>(null);
 
   const [isAddOccupantOpen, setIsAddOccupantOpen] = useState<boolean>(false);
-  const [addOccupantMode, setAddOccupantMode] = useState<'kloter' | 'manual'>('kloter');
   const [targetRoomId, setTargetRoomId] = useState<string>('');
   const [selectedPilgrimId, setSelectedPilgrimId] = useState<string>('');
   const [customTitle, setCustomTitle] = useState<'MR' | 'MRS' | 'MISS' | 'MSTR'>('MR');
@@ -428,27 +427,14 @@ export default function RoomAllocation() {
     let age: number | string = customAge;
     let jamaahId: string | undefined;
 
-    if (addOccupantMode === 'kloter') {
-      if (!selectedPilgrimId) {
-        toast("Silakan pilih jamaah dari daftar kloter terlebih dahulu.", "error");
-        return;
-      }
+    if (selectedPilgrimId) {
       const p = pilgrims.find(item => item.id === selectedPilgrimId);
       if (p) {
-        title = p.gender === 'Laki-laki' || p.gender === 'L' ? 'MR' : 'MRS';
-        name = p.name.toUpperCase();
-        age = p.age;
+        title = customTitle || (p.gender === 'Laki-laki' || p.gender === 'L' ? 'MR' : 'MRS');
+        name = customName.trim().toUpperCase() || p.name.toUpperCase();
+        age = customAge !== '' ? customAge : p.age;
         jamaahId = p.backendId;
       }
-    } else {
-      if (!customName.trim()) {
-        toast("Nama penghuni wajib diisi.", "error");
-        return;
-      }
-      title = customTitle;
-      name = customName.trim().toUpperCase();
-      age = customAge;
-      jamaahId = undefined;
     }
 
     if (!name) {
@@ -456,7 +442,7 @@ export default function RoomAllocation() {
       return;
     }
 
-    if (addOccupantMode === 'kloter' && selectedPilgrimId && !jamaahId) {
+    if (selectedPilgrimId && !jamaahId) {
       toast("ID backend jamaah tidak ditemukan.", "error");
       return;
     }
@@ -1040,7 +1026,6 @@ export default function RoomAllocation() {
                                 setSelectedPilgrimId('');
                                 setCustomName('');
                                 setCustomAge('');
-                                setAddOccupantMode(unassignedPilgrims.length > 0 ? 'kloter' : 'manual');
                                 setIsAddOccupantOpen(true);
                               }}
                               className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 text-[11px] font-bold text-white bg-[#00a859] hover:bg-[#008f4c] active:scale-95 rounded-lg shadow-2xs transition-all mt-1 print:hidden cursor-pointer w-max"
@@ -1330,180 +1315,104 @@ export default function RoomAllocation() {
             </div>
           </DialogHeader>
 
-          <div className="space-y-4 py-3">
-            {/* Segmented Mode Selector: Dari Kloter vs Input Manual */}
-            <div className="grid grid-cols-2 p-1 bg-gray-100/90 rounded-2xl border border-gray-200/60 shadow-2xs">
-              <button
-                type="button"
-                onClick={() => {
-                  setAddOccupantMode('kloter');
-                }}
-                className={`flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer select-none ${
-                  addOccupantMode === 'kloter'
-                    ? 'bg-white text-gray-900 shadow-2xs'
-                    : 'text-gray-500 hover:text-gray-900'
-                }`}
-              >
-                <Users className={`w-4 h-4 ${addOccupantMode === 'kloter' ? 'text-emerald-600' : 'text-gray-400'}`} />
-                <span>Pilih dari Kloter</span>
-                {unassignedPilgrims.length > 0 && (
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
-                    addOccupantMode === 'kloter' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-600'
-                  }`}>
-                    {unassignedPilgrims.length}
-                  </span>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setAddOccupantMode('manual');
-                  setSelectedPilgrimId('');
-                }}
-                className={`flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer select-none ${
-                  addOccupantMode === 'manual'
-                    ? 'bg-white text-gray-900 shadow-2xs'
-                    : 'text-gray-500 hover:text-gray-900'
-                }`}
-              >
-                <UserPlus className={`w-4 h-4 ${addOccupantMode === 'manual' ? 'text-emerald-600' : 'text-gray-400'}`} />
-                <span>Input Manual</span>
-              </button>
-            </div>
-
-            {/* TAB 1: PILIH DARI KLOTER */}
-            {addOccupantMode === 'kloter' && (
-              <div className="space-y-3.5 animate-fade-in">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-                      Jamaah {selectedKloter.toLowerCase().startsWith('kloter') ? selectedKloter : `Kloter ${selectedKloter}`}
-                    </label>
-                    <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-200">
-                      {unassignedPilgrims.length} Belum Dialokasikan
-                    </span>
-                  </div>
-
-                  {unassignedPilgrims.length > 0 ? (
-                    <div className="relative">
-                      <select
-                        value={selectedPilgrimId}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setSelectedPilgrimId(val);
-                          if (val) {
-                            const p = pilgrims.find(item => item.id === val);
-                            if (p) {
-                              setCustomTitle(p.gender === 'Laki-laki' || p.gender === 'L' ? 'MR' : 'MRS');
-                              setCustomName(p.name);
-                              setCustomAge(String(p.age || ''));
-                            }
-                          } else {
-                            setCustomName('');
-                            setCustomAge('');
-                          }
-                        }}
-                        className="w-full h-12 rounded-2xl border border-gray-300 bg-white px-4 text-xs sm:text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 cursor-pointer shadow-2xs"
-                      >
-                        <option value="" className="text-gray-400 font-normal">-- Pilih Jamaah dari Kloter --</option>
-                        {unassignedPilgrims.map(p => (
-                          <option key={p.id} value={p.id}>
-                            {p.name} ({p.gender === 'Laki-laki' || p.gender === 'L' ? 'L' : 'P'}, {p.age || '-'} th) {p.passport && p.passport !== '-' ? `• Paspor: ${p.passport}` : ''}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  ) : (
-                    <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-medium">
-                      Seluruh jamaah di {selectedKloter.toLowerCase().startsWith('kloter') ? selectedKloter : `Kloter ${selectedKloter}`} sudah dialokasikan ke kamar. Jika ingin menambahkan penghuni khusus (mutawif, tamu, keluarga), silakan gunakan tab <strong>Input Manual</strong>.
-                    </div>
-                  )}
+          <div className="space-y-5 py-4">
+            {/* Section 1: Pilih dari Jamaah Kloter */}
+            {unassignedPilgrims.length > 0 && (
+              <div>
+                <div className="mb-4">
+                  <label className="text-sm font-bold text-gray-900 block leading-snug">
+                    Pilih dari Jamaah {selectedKloter.toLowerCase().startsWith('kloter') ? selectedKloter : `Kloter ${selectedKloter}`}
+                  </label>
+                  <p className="text-xs font-semibold text-emerald-700 mt-1">
+                    ({unassignedPilgrims.length} Belum Ditempatkan)
+                  </p>
                 </div>
 
-                {/* Selected Pilgrim Card Preview */}
-                {selectedPilgrimId && (() => {
-                  const p = pilgrims.find(item => item.id === selectedPilgrimId);
-                  if (!p) return null;
-                  return (
-                    <div className="bg-gradient-to-br from-emerald-50/80 to-teal-50/40 border border-emerald-200/90 rounded-2xl p-4 flex items-center gap-3.5 shadow-2xs animate-fade-in">
-                      <div className="w-10 h-10 rounded-xl bg-[#00a859] text-white flex items-center justify-center font-black text-sm shrink-0 shadow-2xs">
-                        {p.name.charAt(0)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-sm text-gray-900 uppercase truncate">
-                            {p.name}
-                          </span>
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-white text-emerald-800 border border-emerald-200 shrink-0">
-                            {p.gender === 'Laki-laki' || p.gender === 'L' ? 'MR' : 'MRS'}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-gray-600 font-medium">
-                          <span>Usia: <strong className="text-gray-900">{p.age || '-'} Thn</strong></span>
-                          <span>&bull;</span>
-                          <span>Paspor: <strong className="font-mono text-gray-900">{p.passport || '-'}</strong></span>
-                        </div>
-                      </div>
-                      <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
-                        <CheckCircle2 className="w-4 h-4" />
-                      </div>
-                    </div>
-                  );
-                })()}
+                <div className="relative">
+                  <select
+                    value={selectedPilgrimId}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSelectedPilgrimId(val);
+                      if (val) {
+                        const p = pilgrims.find(item => item.id === val);
+                        if (p) {
+                          setCustomTitle(p.gender === 'Laki-laki' || p.gender === 'L' ? 'MR' : 'MRS');
+                          setCustomName(p.name);
+                          setCustomAge(String(p.age || ''));
+                        }
+                      } else {
+                        setCustomName('');
+                        setCustomAge('');
+                      }
+                    }}
+                    className="w-full h-12 rounded-2xl border border-gray-300 bg-white px-4 text-xs sm:text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 cursor-pointer shadow-2xs"
+                  >
+                    <option value="" className="text-gray-400 font-normal">-- Pilih Jamaah Kloter --</option>
+                    {unassignedPilgrims.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.gender === 'Laki-laki' || p.gender === 'L' ? 'L' : 'P'}, {p.age || '-'} th) {p.passport && p.passport !== '-' ? `• ${p.passport}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             )}
 
-            {/* TAB 2: INPUT MANUAL */}
-            {addOccupantMode === 'manual' && (
-              <div className="space-y-3.5 animate-fade-in">
-                <div className="p-3 rounded-2xl bg-gray-50 border border-gray-200 text-xs text-gray-600 leading-relaxed">
-                  Gunakan opsi ini jika penghuni kamar adalah mutawif lokal, pemandu tour, atau jamaah tambahan di luar kloter ini.
-                </div>
+            {/* Divider Atau Input Manual */}
+            <div className="relative flex py-1 items-center">
+              <div className="flex-grow border-t border-gray-200"></div>
+              <span className="flex-shrink mx-3 text-xs font-bold text-gray-500 uppercase tracking-wider bg-gray-50 px-3 py-1 rounded-full border border-gray-200">
+                Atau Input Manual
+              </span>
+              <div className="flex-grow border-t border-gray-200"></div>
+            </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="text-[11px] text-gray-600 font-bold uppercase tracking-wider block mb-1.5">
-                      TITLE
-                    </label>
-                    <select
-                      value={customTitle}
-                      onChange={(e) => setCustomTitle(e.target.value as any)}
-                      className="w-full h-12 rounded-2xl border border-gray-300 bg-white px-3 text-sm font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-2xs"
-                    >
-                      <option value="MR">MR</option>
-                      <option value="MRS">MRS</option>
-                      <option value="MISS">MISS</option>
-                      <option value="MSTR">MSTR</option>
-                    </select>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="text-[11px] text-gray-600 font-bold uppercase tracking-wider block mb-1.5">
-                      NAMA LENGKAP *
-                    </label>
-                    <Input
-                      value={customName}
-                      onChange={(e) => setCustomName(e.target.value)}
-                      placeholder="Cth. AHMAD HIDAYAT"
-                      className="h-12 text-sm rounded-2xl border-gray-300 bg-white px-4 uppercase font-bold text-gray-900 placeholder:text-gray-400 placeholder:font-normal focus:ring-1 focus:ring-emerald-500 shadow-2xs"
-                    />
-                  </div>
-                </div>
-
+            {/* Section 2: Form Input Manual / Detail Penghuni */}
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="text-[11px] text-gray-600 font-bold uppercase tracking-wider block mb-1.5">
-                    USIA (TAHUN)
+                    TITLE
+                  </label>
+                  <select
+                    value={customTitle}
+                    onChange={(e) => setCustomTitle(e.target.value as any)}
+                    className="w-full h-12 rounded-2xl border border-gray-300 bg-white px-3 text-sm font-bold text-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-2xs"
+                  >
+                    <option value="MR">MR</option>
+                    <option value="MRS">MRS</option>
+                    <option value="MISS">MISS</option>
+                    <option value="MSTR">MSTR</option>
+                  </select>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="text-[11px] text-gray-600 font-bold uppercase tracking-wider block mb-1.5">
+                    NAMA LENGKAP *
                   </label>
                   <Input
-                    value={customAge}
-                    onChange={(e) => setCustomAge(e.target.value)}
-                    placeholder="Contoh: 48"
-                    className="h-12 text-sm rounded-2xl border-gray-300 bg-white px-4 font-bold text-gray-900 placeholder:text-gray-400 placeholder:font-normal focus:ring-1 focus:ring-emerald-500 shadow-2xs"
-                    type="number"
+                    value={customName}
+                    onChange={(e) => setCustomName(e.target.value)}
+                    placeholder="NAMA LENGKAP"
+                    className="h-12 text-sm rounded-2xl border-gray-300 bg-white px-4 uppercase font-bold text-gray-900 placeholder:text-gray-400 placeholder:font-normal focus:ring-1 focus:ring-emerald-500 shadow-2xs"
                   />
                 </div>
               </div>
-            )}
+
+              {/* Jarak atas USIA (TAHUN) dengan form title di atasnya */}
+              <div className="pt-4">
+                <label className="text-[11px] text-gray-600 font-bold uppercase tracking-wider block mb-1.5">
+                  USIA (TAHUN)
+                </label>
+                <Input
+                  value={customAge}
+                  onChange={(e) => setCustomAge(e.target.value)}
+                  placeholder="Contoh: 48"
+                  className="h-12 text-sm rounded-2xl border-gray-300 bg-white px-4 font-bold text-gray-900 placeholder:text-gray-400 placeholder:font-normal focus:ring-1 focus:ring-emerald-500 shadow-2xs"
+                  type="number"
+                />
+              </div>
+            </div>
           </div>
 
           <DialogFooter className="pt-4 border-t border-gray-100 flex items-center justify-end gap-2.5">
