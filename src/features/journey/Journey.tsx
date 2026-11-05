@@ -895,10 +895,12 @@ export default function Journey() {
                             >
                               {broadcastingId === schedule.id ? (
                                 <RefreshCw className="w-3.5 h-3.5 animate-spin mr-1.5 text-sky-600" />
+                              ) : schedule.reminderStatus === 'published' ? (
+                                <CheckCircle2 className="w-3.5 h-3.5 mr-1.5 text-emerald-600" />
                               ) : (
                                 <Send className="w-3.5 h-3.5 mr-1.5" />
                               )}
-                              {schedule.reminderStatus === 'published' ? 'Siarkan Ulang' : 'Siarkan'}
+                              {schedule.reminderStatus === 'published' ? 'Selesai' : 'Siarkan'}
                             </Button>
 
                             <Button
