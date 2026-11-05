@@ -11,7 +11,7 @@ import {
   Search, Filter, Plus, Trash2, Edit2, UserPlus, Info, 
   MapPin, Users2, AlertTriangle, Briefcase, Eye, BedDouble, 
   CheckCircle2, Layers, FileSpreadsheet, X, Users, Building2, Calendar, ShieldCheck,
-  Sparkles, UserCheck
+  Sparkles, UserCheck, Download
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { useStore, Group } from '@/core/store';
@@ -66,6 +66,13 @@ export default function Groups() {
   const [pilgrimSearchTerm, setPilgrimSearchTerm] = useState("");
   const [formData, setFormData] = useState<Partial<Group>>({});
 
+  // Modals for Jamaah Terbagi & Total Petugas SDM
+  const [isJamaahTerbagiModalOpen, setIsJamaahTerbagiModalOpen] = useState(false);
+  const [jamaahTerbagiSearch, setJamaahTerbagiSearch] = useState('');
+
+  const [isStaffSDMModalOpen, setIsStaffSDMModalOpen] = useState(false);
+  const [staffSDMSearch, setStaffSDMSearch] = useState('');
+
   useEffect(() => {
     const loadKlotersAndTourLeaders = async () => {
       try {
@@ -111,6 +118,132 @@ export default function Groups() {
   }).length;
   const totalPilgrimsInGroups = pilgrims.filter(p => p.group && p.group !== '-' && p.group !== 'Belum ada kloter').length;
   const totalAssignedStaff = tourLeaders.filter(t => t.group && t.group !== '-').length + mutawifs.filter(m => m.group && m.group !== '-').length;
+
+  const dividedPilgrimsList = useMemo(() => {
+    return pilgrims.filter(p => (p.group && p.group !== '-' && p.group !== 'Belum ada kloter') || p.kloterId);
+  }, [pilgrims]);
+
+  const filteredDividedPilgrims = useMemo(() => {
+    const q = jamaahTerbagiSearch.toLowerCase().trim();
+    if (!q) return dividedPilgrimsList;
+    return dividedPilgrimsList.filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      (p.group && p.group.toLowerCase().includes(q)) ||
+      (p.passport && p.passport.toLowerCase().includes(q)) ||
+      p.id.toLowerCase().includes(q) ||
+      (p.umrahPackage && p.umrahPackage.toLowerCase().includes(q))
+    );
+  }, [dividedPilgrimsList, jamaahTerbagiSearch]);
+
+  const allStaffSDMList = useMemo(() => {
+    const tls = tourLeaders.map(t => {
+      const assignedKloterNames = (t.kloters && t.kloters.length > 0)
+        ? t.kloters.map(k => k.name).join(', ')
+        : (t.group && t.group !== '-' ? t.group : 'Belum Ditugaskan');
+      const sLower = (t.status || '').toLowerCase();
+      const readinessLabel = 
+        sLower === 'active' || sLower === 'aktif'
+          ? 'Aktif Membimbing'
+          : sLower === 'resting' || sLower === 'istirahat'
+          ? 'Istirahat / Off'
+          : 'Siaga (Standby)';
+      return {
+        id: t.id,
+        name: t.name,
+        role: 'Tour Leader (TL)',
+        kloter: assignedKloterNames,
+        phone: t.phone || '-',
+        experience: t.experience || '-',
+        status: readinessLabel,
+      };
+    });
+
+    const mws = mutawifs.map(m => {
+      const assignedKloterNames = (m.kloters && m.kloters.length > 0)
+        ? m.kloters.map(k => k.name).join(', ')
+        : (m.group && m.group !== '-' ? m.group : 'Belum Ditugaskan');
+      const sLower = (m.status || '').toLowerCase();
+      const readinessLabel = 
+        sLower === 'active' || sLower === 'aktif'
+          ? 'Aktif Membimbing'
+          : sLower === 'resting' || sLower === 'istirahat'
+          ? 'Istirahat / Off'
+          : 'Siaga (Standby)';
+      return {
+        id: m.id,
+        name: m.name,
+        role: 'Muthawwif Lokal',
+        kloter: assignedKloterNames,
+        phone: m.phone || '-',
+        experience: m.language || m.experience || '-',
+        status: readinessLabel,
+      };
+    });
+
+    return [...tls, ...mws];
+  }, [tourLeaders, mutawifs]);
+
+  const filteredStaffSDM = useMemo(() => {
+    const q = staffSDMSearch.toLowerCase().trim();
+    if (!q) return allStaffSDMList;
+    return allStaffSDMList.filter(s =>
+      s.name.toLowerCase().includes(q) ||
+      s.role.toLowerCase().includes(q) ||
+      s.kloter.toLowerCase().includes(q) ||
+      s.status.toLowerCase().includes(q) ||
+      s.phone.toLowerCase().includes(q)
+    );
+  }, [allStaffSDMList, staffSDMSearch]);
+
+  const handleExportJamaahTerbagiExcel = async () => {
+    try {
+      const exportData = filteredDividedPilgrims.map((p, idx) => ({
+        'No': idx + 1,
+        'ID Jamaah': p.id,
+        'Nama Lengkap': p.name,
+        'Kloter / Rombongan': p.group || '-',
+        'Paket Umrah': p.umrahPackage || '-',
+        'No. Paspor': p.passport || '-',
+        'No. Visa': p.visaNumber || '-',
+        'Jenis Kelamin': p.gender || '-',
+        'Usia': p.age || 0,
+        'No. HP': p.phone || '-',
+        'Kontak Darurat': p.emergencyContact || '-',
+      }));
+
+      await exportToExcel(
+        exportData,
+        'Data_Jamaah_Terbagi_Kloter',
+        'LAPORAN DATA JAMAAH TERALOKASI DALAM KLOTER - DNA TOUR'
+      );
+      toast('Data jamaah terbagi berhasil diexport ke Excel.', 'success');
+    } catch (err: any) {
+      toast(err.message || 'Gagal export ke Excel.', 'error');
+    }
+  };
+
+  const handleExportStaffSDMExcel = async () => {
+    try {
+      const exportData = filteredStaffSDM.map((s, idx) => ({
+        'No': idx + 1,
+        'Nama Petugas': s.name,
+        'Peran Petugas': s.role,
+        'Penugasan Kloter': s.kloter,
+        'Status Kesiapan': s.status,
+        'No. Telepon / HP': s.phone,
+        'Pengalaman / Bahasa': s.experience,
+      }));
+
+      await exportToExcel(
+        exportData,
+        'Data_Petugas_SDM_Kloter',
+        'LAPORAN DATA PETUGAS SDM (TOUR LEADER & MUTHAWWIF) - DNA TOUR'
+      );
+      toast('Data petugas SDM berhasil diexport ke Excel.', 'success');
+    } catch (err: any) {
+      toast(err.message || 'Gagal export ke Excel.', 'error');
+    }
+  };
 
   const filteredGroups = useMemo(() => {
     return groups.filter(g => {
@@ -234,19 +367,23 @@ export default function Groups() {
       }
     }
 
-    const rawStatus = (staffStatus?.toLowerCase() === 'resting' || staffStatus?.toLowerCase() === 'istirahat')
-      ? 'Istirahat/Off'
-      : staffStatus;
+    const sLower = (staffStatus || '').toLowerCase();
+    const readinessLabel = 
+      sLower === 'active' || sLower === 'aktif'
+        ? 'Aktif Membimbing'
+        : sLower === 'resting' || sLower === 'istirahat'
+        ? 'Istirahat / Off'
+        : 'Siaga (Standby)';
 
     let statusBadge = '';
     if (isAssignedToThis) {
-      statusBadge = ' (Saat Ini)';
+      statusBadge = ` (Saat Ini - ${readinessLabel})`;
     } else if (hasConflict) {
-      statusBadge = ' (Tugas Kloter Lain - Jadwal Bentrok)';
+      statusBadge = ` (Tugas Kloter Lain - Jadwal Bentrok - ${readinessLabel})`;
     } else if (isAssignedOther) {
-      statusBadge = ' (Tugas Kloter Lain)';
-    } else if (rawStatus) {
-      statusBadge = ` (${rawStatus})`;
+      statusBadge = ` (Tugas Kloter Lain - ${readinessLabel})`;
+    } else {
+      statusBadge = ` (${readinessLabel})`;
     }
 
     return {
@@ -527,12 +664,33 @@ export default function Groups() {
         mutawifService.getMutawifs().catch(() => null),
       ]);
 
-      if (refreshedKloters) setGroups(refreshedKloters);
-      else {
+      const uiStatus = backendStatus === 'archived' ? 'Archived' : backendStatus === 'active' ? 'Active' : 'Draft';
+      const kloterTargetId = editingGroup ? (editingGroup.backendId || editingGroup.id) : (savedKloter.backendId || savedKloter.id);
+
+      if (editingGroup) {
+        updateGroup(editingGroup.id, { ...savedKloter, status: uiStatus });
+      }
+
+      if (refreshedKloters) {
+        setGroups(
+          refreshedKloters.map((g) => {
+            if ((g.backendId && g.backendId === kloterTargetId) || g.id === kloterTargetId) {
+              return { ...g, status: uiStatus };
+            }
+            return g;
+          })
+        );
+      } else {
         setGroups(
           editingGroup
-            ? groups.map((g) => (g.backendId === savedKloter.backendId ? savedKloter : g))
-            : [savedKloter, ...groups]
+            ? groups.map((g) => (
+                (g.backendId && savedKloter.backendId && g.backendId === savedKloter.backendId) ||
+                g.id === savedKloter.id ||
+                (editingGroup && (g.id === editingGroup.id || g.backendId === editingGroup.backendId))
+                  ? { ...g, ...savedKloter, status: uiStatus }
+                  : g
+              ))
+            : [{ ...savedKloter, status: uiStatus }, ...groups]
         );
       }
       if (refreshedTLs) setTourLeaders(refreshedTLs);
@@ -650,8 +808,8 @@ export default function Groups() {
 
         {/* Card 2: Jamaah Terbagi */}
         <Card 
-          onClick={() => setActiveTab('all')}
-          className="rounded-2xl border border-gray-200/80 bg-white shadow-2xs cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-sm active:scale-[0.98]"
+          onClick={() => setIsJamaahTerbagiModalOpen(true)}
+          className="rounded-2xl border border-gray-200/80 bg-white shadow-2xs cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md active:scale-[0.98] group"
         >
           <CardContent className="p-5 flex flex-col justify-between h-full gap-3">
             <div className="flex justify-between items-start">
@@ -702,8 +860,8 @@ export default function Groups() {
 
         {/* Card 4: Total Petugas SDM */}
         <Card 
-          onClick={() => setActiveTab('all')}
-          className="rounded-2xl border border-gray-200/80 bg-white shadow-2xs cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-sm active:scale-[0.98]"
+          onClick={() => setIsStaffSDMModalOpen(true)}
+          className="rounded-2xl border border-gray-200/80 bg-white shadow-2xs cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:border-purple-300 hover:shadow-md active:scale-[0.98] group"
         >
           <CardContent className="p-5 flex flex-col justify-between h-full gap-3">
             <div className="flex justify-between items-start">
@@ -1164,15 +1322,7 @@ export default function Groups() {
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
-                    <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
-                      <MapPin className="w-4 h-4 text-[#782820] shrink-0" />
-                      <span>Kode Kloter</span>
-                    </div>
-                    <span className="font-bold text-gray-900 text-sm text-right">
-                      {editingGroup.kloter || '-'}
-                    </span>
-                  </div>
+
 
                   <div className="flex items-center justify-between py-3.5 sm:py-4 px-5 sm:px-6">
                     <div className="flex items-center gap-3.5 text-gray-700 text-sm font-medium">
@@ -1297,19 +1447,7 @@ export default function Groups() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
-                    <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
-                      KODE KLOTER
-                    </label>
-                    <div className="sm:col-span-8">
-                      <Input 
-                        value={formData.kloter || ''} 
-                        onChange={(e) => setFormData({...formData, kloter: e.target.value})} 
-                        placeholder="Cth. KNO-01 atau CGK-02" 
-                        className="h-12 sm:h-13 rounded-2xl border-gray-300 bg-white text-base font-bold text-gray-900 placeholder:text-gray-400 placeholder:font-normal px-4 sm:px-5 focus:ring-1 focus:ring-[#00a859] focus:border-[#00a859]"
-                      />
-                    </div>
-                  </div>
+
 
                   <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 sm:gap-4 items-center">
                     <label className="sm:col-span-4 text-xs sm:text-[13px] font-bold text-gray-600 uppercase tracking-wider">
@@ -1487,6 +1625,236 @@ export default function Groups() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: Daftar Jamaah Terbagi */}
+      <Dialog open={isJamaahTerbagiModalOpen} onOpenChange={setIsJamaahTerbagiModalOpen}>
+        <DialogContent className="w-[95vw] sm:w-full max-w-4xl rounded-3xl p-6 sm:p-7 shadow-2xl border-0 overflow-hidden flex flex-col max-h-[90vh]">
+          <DialogHeader className="pb-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <DialogTitle className="text-xl font-bold text-gray-900 tracking-tight flex items-center gap-2">
+                <Users className="w-5 h-5 text-blue-600" />
+                <span>Daftar Jamaah Terbagi (Teralokasi Kloter)</span>
+              </DialogTitle>
+              <p className="text-xs text-gray-500 mt-1 font-medium">
+                Total {filteredDividedPilgrims.length} jamaah yang telah dialokasikan ke dalam kloter rombongan
+              </p>
+            </div>
+            <Button
+              onClick={handleExportJamaahTerbagiExcel}
+              className="bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl h-10 px-4 text-xs font-bold shadow-2xs flex items-center gap-2 cursor-pointer self-start sm:self-auto shrink-0"
+            >
+              <Download className="w-4 h-4" />
+              <span>Export Excel</span>
+            </Button>
+          </DialogHeader>
+
+          {/* Search Box */}
+          <div className="pt-4 pb-2">
+            <div className="relative">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                placeholder="Cari nama jamaah, kloter, paspor, atau paket..."
+                value={jamaahTerbagiSearch}
+                onChange={(e) => setJamaahTerbagiSearch(e.target.value)}
+                className="pl-9.5 pr-8 bg-gray-50/70 border-gray-200 text-xs sm:text-sm h-10 rounded-xl"
+              />
+              {jamaahTerbagiSearch && (
+                <button
+                  type="button"
+                  onClick={() => setJamaahTerbagiSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 rounded-full"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Table Container */}
+          <div className="flex-1 overflow-y-auto min-h-[300px] border border-gray-100 rounded-2xl">
+            <Table>
+              <TableHeader className="bg-gray-50/90 sticky top-0 z-10">
+                <TableRow className="border-b border-gray-200">
+                  <TableHead className="w-12 text-center text-xs font-bold text-gray-700 py-3">No</TableHead>
+                  <TableHead className="text-xs font-bold text-gray-700 py-3">ID Jamaah</TableHead>
+                  <TableHead className="text-xs font-bold text-gray-700 py-3">Nama Jamaah</TableHead>
+                  <TableHead className="text-xs font-bold text-gray-700 py-3">Kloter Rombongan</TableHead>
+                  <TableHead className="text-xs font-bold text-gray-700 py-3">Paket Umrah</TableHead>
+                  <TableHead className="text-xs font-bold text-gray-700 py-3">Paspor</TableHead>
+                  <TableHead className="text-xs font-bold text-gray-700 py-3">No. HP</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredDividedPilgrims.length > 0 ? (
+                  filteredDividedPilgrims.map((p, idx) => (
+                    <TableRow key={p.id || idx} className="hover:bg-gray-50/80">
+                      <TableCell className="text-center font-bold text-xs text-gray-500 py-3">{idx + 1}</TableCell>
+                      <TableCell className="font-mono text-xs font-bold text-emerald-800 py-3">{p.id}</TableCell>
+                      <TableCell className="font-bold text-xs text-gray-900 py-3">
+                        <div>{p.name}</div>
+                        <div className="text-[11px] font-normal text-gray-500">{p.gender === 'L' ? 'Laki-laki' : 'Perempuan'} &bull; {p.age} th</div>
+                      </TableCell>
+                      <TableCell className="py-3">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200/60">
+                          {p.group}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-xs text-gray-700 font-medium py-3">{p.umrahPackage || '-'}</TableCell>
+                      <TableCell className="font-mono text-xs font-semibold text-gray-800 py-3">{p.passport || '-'}</TableCell>
+                      <TableCell className="text-xs text-gray-600 py-3">{p.phone || '-'}</TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center py-10 text-gray-400 text-xs font-medium">
+                      Tidak ada data jamaah terbagi yang cocok.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          <DialogFooter className="pt-4 border-t border-gray-100 flex items-center justify-between">
+            <span className="text-xs text-gray-500 font-medium">
+              Menampilkan {filteredDividedPilgrims.length} dari total {dividedPilgrimsList.length} jamaah
+            </span>
+            <Button
+              variant="outline"
+              onClick={() => setIsJamaahTerbagiModalOpen(false)}
+              className="rounded-xl h-10 px-5 text-xs font-bold text-gray-700 border-gray-300 hover:bg-gray-100 cursor-pointer"
+            >
+              Tutup
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: Total Petugas SDM */}
+      <Dialog open={isStaffSDMModalOpen} onOpenChange={setIsStaffSDMModalOpen}>
+        <DialogContent className="w-[95vw] sm:w-full max-w-4xl rounded-3xl p-6 sm:p-7 shadow-2xl border-0 overflow-hidden flex flex-col max-h-[90vh]">
+          <DialogHeader className="pb-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <DialogTitle className="text-xl font-bold text-gray-900 tracking-tight flex items-center gap-2">
+                <UserCheck className="w-5 h-5 text-purple-600" />
+                <span>Total Petugas SDM (Tour Leader & Muthawwif)</span>
+              </DialogTitle>
+              <p className="text-xs text-gray-500 mt-1 font-medium">
+                Total {filteredStaffSDM.length} petugas operasional terdaftar di sistem
+              </p>
+            </div>
+            <Button
+              onClick={handleExportStaffSDMExcel}
+              className="bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl h-10 px-4 text-xs font-bold shadow-2xs flex items-center gap-2 cursor-pointer self-start sm:self-auto shrink-0"
+            >
+              <Download className="w-4 h-4" />
+              <span>Export Excel</span>
+            </Button>
+          </DialogHeader>
+
+          {/* Search Box */}
+          <div className="pt-4 pb-2">
+            <div className="relative">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                placeholder="Cari nama petugas, peran, kloter, atau status..."
+                value={staffSDMSearch}
+                onChange={(e) => setStaffSDMSearch(e.target.value)}
+                className="pl-9.5 pr-8 bg-gray-50/70 border-gray-200 text-xs sm:text-sm h-10 rounded-xl"
+              />
+              {staffSDMSearch && (
+                <button
+                  type="button"
+                  onClick={() => setStaffSDMSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 rounded-full"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Table Container */}
+          <div className="flex-1 overflow-y-auto min-h-[300px] border border-gray-100 rounded-2xl">
+            <Table>
+              <TableHeader className="bg-gray-50/90 sticky top-0 z-10">
+                <TableRow className="border-b border-gray-200">
+                  <TableHead className="w-12 text-center text-xs font-bold text-gray-700 py-3">No</TableHead>
+                  <TableHead className="text-xs font-bold text-gray-700 py-3">Nama Petugas</TableHead>
+                  <TableHead className="text-xs font-bold text-gray-700 py-3">Peran SDM</TableHead>
+                  <TableHead className="text-xs font-bold text-gray-700 py-3">Penugasan Kloter</TableHead>
+                  <TableHead className="text-xs font-bold text-gray-700 py-3">Status Kesiapan</TableHead>
+                  <TableHead className="text-xs font-bold text-gray-700 py-3">Kontak / HP</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredStaffSDM.length > 0 ? (
+                  filteredStaffSDM.map((s, idx) => (
+                    <TableRow key={s.id || idx} className="hover:bg-gray-50/80">
+                      <TableCell className="text-center font-bold text-xs text-gray-500 py-3">{idx + 1}</TableCell>
+                      <TableCell className="font-bold text-xs text-gray-900 py-3">{s.name}</TableCell>
+                      <TableCell className="py-3">
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${
+                          s.role.includes('Tour Leader') 
+                            ? 'bg-blue-50 text-blue-800 border-blue-200' 
+                            : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        }`}>
+                          {s.role}
+                        </span>
+                      </TableCell>
+                      <TableCell className="py-3">
+                        <span className={`text-xs font-semibold ${
+                          s.kloter === 'Belum Ditugaskan' ? 'text-gray-400 italic' : 'text-purple-900 font-bold'
+                        }`}>
+                          {s.kloter}
+                        </span>
+                      </TableCell>
+                      <TableCell className="py-3">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${
+                          s.status === 'Aktif Membimbing'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : s.status === 'Istirahat / Off'
+                            ? 'bg-amber-50 text-amber-800 border-amber-200'
+                            : 'bg-blue-50 text-blue-700 border-blue-200'
+                        }`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${
+                            s.status === 'Aktif Membimbing'
+                              ? 'bg-emerald-600'
+                              : s.status === 'Istirahat / Off'
+                              ? 'bg-amber-600'
+                              : 'bg-blue-600'
+                          }`} />
+                          {s.status}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-xs font-mono text-gray-700 py-3">{s.phone}</TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-10 text-gray-400 text-xs font-medium">
+                      Tidak ada data petugas SDM yang cocok.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          <DialogFooter className="pt-4 border-t border-gray-100 flex items-center justify-between">
+            <span className="text-xs text-gray-500 font-medium">
+              Menampilkan {filteredStaffSDM.length} dari total {allStaffSDMList.length} petugas SDM
+            </span>
+            <Button
+              variant="outline"
+              onClick={() => setIsStaffSDMModalOpen(false)}
+              className="rounded-xl h-10 px-5 text-xs font-bold text-gray-700 border-gray-300 hover:bg-gray-100 cursor-pointer"
+            >
+              Tutup
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

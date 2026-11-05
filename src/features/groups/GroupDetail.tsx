@@ -240,7 +240,14 @@ if (isLoadingGroup) {
   }
 
   // Related Data for this Kloter
-  const groupPilgrims = pilgrims.filter(p => p.group === group.name || p.group === group.kloter || p.group === group.id);
+  const groupPilgrims = pilgrims.filter(
+    p => p.group === group.name || 
+         (group.kloter && p.group === group.kloter) || 
+         p.group === group.id || 
+         (group.backendId && p.kloterId === group.backendId) || 
+         p.kloterId === group.id || 
+         (group.formId && p.group === group.formId)
+  );
   const currentKloterId = targetKloterId || group.id;
   const groupTourLeaders = getKloterTourLeaders(currentKloterId, tourLeaders);
   const assignedTLNamesDisplay = groupTourLeaders.length > 0 ? groupTourLeaders.map(t => t.name).join(', ') : '-';
@@ -515,27 +522,58 @@ if (isLoadingGroup) {
     }
   };
 
-  const handleExportKloterExcel = () => {
-    const exportData = groupPilgrims.map((p, idx) => ({
-      'No': idx + 1,
-      'ID Jamaah': p.id,
-      'Nama Lengkap': p.name,
-      'No. Paspor': p.passport,
-      'No. Visa': p.visaNumber || '-',
-      'Jenis Kelamin': p.gender,
-      'Usia': p.age,
-      'No. HP': p.phone,
-      'Kontak Darurat': p.emergencyContact || '-',
-      'Paket Umrah': p.umrahPackage || '-',
-      'Kloter': group.name,
-      'Tour Leader': assignedTLNamesDisplay,
-      'Muthawwif': groupMutawifs.length > 0 ? groupMutawifs.map(m => m.name).join(', ') : (group.mutawif || '-'),
-      'Hotel Makkah': p.hotelMakkah || p.hotel || '-',
-      'Hotel Madinah': p.hotelMadinah || '-'
-    }));
+  const handleExportKloterExcel = async () => {
+    try {
+      const exportData = groupPilgrims.length > 0 ? groupPilgrims.map((p, idx) => ({
+        'No': idx + 1,
+        'ID Jamaah': p.id,
+        'Nama Lengkap': p.name,
+        'No. Paspor': p.passport || '-',
+        'No. Visa': p.visaNumber || '-',
+        'Jenis Kelamin': p.gender || '-',
+        'Usia': p.age || 0,
+        'No. HP': p.phone || '-',
+        'Kontak Darurat': p.emergencyContact || '-',
+        'Paket Umrah': p.umrahPackage || '-',
+        'Kloter': group.name,
+        'Tgl Keberangkatan': group.departureDate || '-',
+        'Tgl Kepulangan': group.returnDate || '-',
+        'Tour Leader': assignedTLNamesDisplay,
+        'Muthawwif': groupMutawifs.length > 0 ? groupMutawifs.map(m => m.name).join(', ') : (group.mutawif || '-'),
+        'Hotel Makkah': p.hotelMakkah || p.hotel || '-',
+        'Hotel Madinah': p.hotelMadinah || '-'
+      })) : [
+        {
+          'No': 1,
+          'ID Jamaah': '-',
+          'Nama Lengkap': '(Belum ada jamaah yang teralokasi di kloter ini)',
+          'No. Paspor': '-',
+          'No. Visa': '-',
+          'Jenis Kelamin': '-',
+          'Usia': 0,
+          'No. HP': '-',
+          'Kontak Darurat': '-',
+          'Paket Umrah': '-',
+          'Kloter': group.name,
+          'Tgl Keberangkatan': group.departureDate || '-',
+          'Tgl Kepulangan': group.returnDate || '-',
+          'Tour Leader': assignedTLNamesDisplay,
+          'Muthawwif': groupMutawifs.length > 0 ? groupMutawifs.map(m => m.name).join(', ') : (group.mutawif || '-'),
+          'Hotel Makkah': makkahHotelName || '-',
+          'Hotel Madinah': madinahHotelName || '-'
+        }
+      ];
 
-    exportToExcel(exportData, `Detail_Kloter_${group.name.replace(/\s+/g, '_')}`, `LAPORAN DETAIL KLOTER - ${group.name.toUpperCase()}`);
-    toast('Data kloter berhasil diunduh ke Excel!', 'success');
+      await exportToExcel(
+        exportData, 
+        `Detail_Kloter_${group.name.replace(/\s+/g, '_')}`, 
+        `LAPORAN DETAIL KLOTER - ${group.name.toUpperCase()}`
+      );
+      toast('Data kloter berhasil diunduh ke Excel!', 'success');
+    } catch (err: any) {
+      console.error('Export Excel failed:', err);
+      toast(err.message || 'Gagal mengunduh file Excel.', 'error');
+    }
   };
 
   const getStaffAssignmentInfo = (
@@ -578,19 +616,23 @@ if (isLoadingGroup) {
       }
     }
 
-    const rawStatus = (staffStatus?.toLowerCase() === 'resting' || staffStatus?.toLowerCase() === 'istirahat')
-      ? 'Istirahat/Off'
-      : staffStatus;
+    const sLower = (staffStatus || '').toLowerCase();
+    const readinessLabel = 
+      sLower === 'active' || sLower === 'aktif'
+        ? 'Aktif Membimbing'
+        : sLower === 'resting' || sLower === 'istirahat'
+        ? 'Istirahat / Off'
+        : 'Siaga (Standby)';
 
     let statusBadge = '';
     if (isAssignedToThis) {
-      statusBadge = ' (Saat Ini)';
+      statusBadge = ` (Saat Ini - ${readinessLabel})`;
     } else if (hasConflict) {
-      statusBadge = ' (Tugas Kloter Lain - Jadwal Bentrok)';
+      statusBadge = ` (Tugas Kloter Lain - Jadwal Bentrok - ${readinessLabel})`;
     } else if (isAssignedOther) {
-      statusBadge = ' (Tugas Kloter Lain)';
-    } else if (rawStatus) {
-      statusBadge = ` (${rawStatus})`;
+      statusBadge = ` (Tugas Kloter Lain - ${readinessLabel})`;
+    } else {
+      statusBadge = ` (${readinessLabel})`;
     }
 
     return {
@@ -655,13 +697,22 @@ if (isLoadingGroup) {
         }
       }
 
+      const rawStatus = (editFormData.status || group.status || '').toLowerCase();
+      const backendStatus: 'draft' | 'active' | 'archived' =
+        rawStatus === 'archived' || rawStatus === 'diarsipkan'
+          ? 'archived'
+          : rawStatus === 'active' || rawStatus === 'aktif'
+          ? 'active'
+          : 'draft';
+      const uiStatus = backendStatus === 'archived' ? 'Archived' : backendStatus === 'active' ? 'Active' : 'Draft';
+
       let updatedGroup: Group | null = null;
       if (group.backendId) {
         updatedGroup = await kloterService.updateKloter(group.backendId, {
           name: editFormData.name || group.name,
-          flight_code: editFormData.kloter || null,
           departure_date: editFormData.departureDate || null,
           return_date: editFormData.returnDate || null,
+          status: backendStatus,
           tour_leader: tlName,
           mutawif_local: mwName,
         });
@@ -727,9 +778,13 @@ if (isLoadingGroup) {
         mutawifService.getMutawifs().catch(() => null),
       ]);
 
-      if (refreshedKloters) setGroups(refreshedKloters);
-      else if (updatedGroup) updateGroup(group.id, updatedGroup);
-      else updateGroup(group.id, editFormData);
+      if (refreshedKloters) {
+        setGroups(refreshedKloters.map(k => (k.backendId === targetKloterId || k.id === targetKloterId) ? { ...k, status: uiStatus } : k));
+      } else if (updatedGroup) {
+        updateGroup(group.id, { ...updatedGroup, status: uiStatus });
+      } else {
+        updateGroup(group.id, { ...editFormData, status: uiStatus });
+      }
 
       if (refreshedTLs) setTourLeaders(refreshedTLs);
       if (refreshedMWs) setMutawifs(refreshedMWs);
@@ -790,7 +845,6 @@ if (isLoadingGroup) {
             </div>
             <p className="text-xs text-gray-500 font-medium mt-1">
               ID Kloter: <span className="font-bold text-[#480c0c]">{group.formId || group.id}</span>
-              {group.kloter && <span className="ml-2">&bull; Penerbangan: <span className="font-semibold text-gray-700">{group.kloter}</span></span>}
             </p>
           </div>
         </div>
@@ -826,6 +880,11 @@ if (isLoadingGroup) {
                 returnDate: group.returnDate ? group.returnDate.substring(0, 10) : '',
                 tourLeader: initialTL,
                 mutawif: assignedMW,
+                status: (group.status || '').toLowerCase() === 'archived' || (group.status || '').toLowerCase() === 'diarsipkan'
+                  ? 'Archived'
+                  : (group.status || '').toLowerCase() === 'draft'
+                  ? 'Draft'
+                  : 'Active'
               });
               setIsEditModalOpen(true);
             }}
@@ -1025,12 +1084,7 @@ if (isLoadingGroup) {
                   <span className="text-xs text-gray-500 font-medium">ID Kloter</span>
                   <span className="font-bold text-sm text-[#480c0c]">{group.formId || group.id}</span>
                 </div>
-                <div className="flex justify-between items-center py-3">
-                  <span className="text-xs text-gray-500 font-medium">Kode Penerbangan / Kloter</span>
-                  <span className="font-semibold text-xs text-gray-800 font-mono bg-gray-50 px-2 py-0.5 rounded-md border border-gray-200">
-                    {group.kloter || '-'}
-                  </span>
-                </div>
+
                 <div className="flex justify-between items-center py-3">
                   <span className="text-xs text-gray-500 font-medium">Status Pengoperasian</span>
                   <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase border shadow-2xs ${
@@ -1867,12 +1921,22 @@ if (isLoadingGroup) {
               />
             </div>
             <div>
-              <label className="font-semibold text-gray-700 mb-1.5 block">ID / Kode Flight</label>
-              <Input 
-                value={editFormData.kloter || ''} 
-                onChange={(e) => setEditFormData({...editFormData, kloter: e.target.value})} 
-                className="h-9.5 text-xs sm:text-sm rounded-xl"
-              />
+              <label className="font-semibold text-gray-700 mb-1.5 block">Status Kloter</label>
+              <select
+                value={
+                  (editFormData.status || '').toLowerCase() === 'archived' || (editFormData.status || '').toLowerCase() === 'diarsipkan'
+                    ? 'Archived'
+                    : (editFormData.status || '').toLowerCase() === 'draft'
+                    ? 'Draft'
+                    : 'Active'
+                }
+                onChange={(e) => setEditFormData({...editFormData, status: e.target.value as any})}
+                className="h-9.5 w-full text-xs sm:text-sm rounded-xl border border-gray-300 bg-white px-3 font-semibold text-gray-900 focus:outline-none focus:ring-1 focus:ring-[#740A03] focus:border-[#740A03] cursor-pointer"
+              >
+                <option value="Active">Aktif (Berjalan)</option>
+                <option value="Draft">Draft (Perencanaan)</option>
+                <option value="Archived">Diarsipkan (Selesai)</option>
+              </select>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
