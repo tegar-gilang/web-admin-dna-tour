@@ -1382,7 +1382,7 @@ const handleConfirmQuickPay = async () => {
               <TableHeader className="bg-gray-50/80">
                 <TableRow className="border-b-gray-200">
                   <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap px-4 min-w-[130px]">ID JAMAAH</TableHead>
-                  <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap px-4 min-w-[240px]">NAMA JAMAAH / PENERIMA</TableHead>
+                  <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap px-4 min-w-[240px]">SUMBER DANA</TableHead>
                   <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap px-4 min-w-[160px]">TIPE & KATEGORI</TableHead>
                   <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap px-4 text-right min-w-[150px]">NOMINAL (RP)</TableHead>
                   <TableHead className="text-[11px] font-bold text-gray-500 uppercase tracking-wider h-11 whitespace-nowrap px-4 min-w-[160px]">METODE & TANGGAL</TableHead>
