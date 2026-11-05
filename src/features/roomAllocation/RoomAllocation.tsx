@@ -1350,14 +1350,6 @@ export default function RoomAllocation() {
               </div>
             )}
 
-            {/* Divider Atau Input Manual */}
-            <div className="relative flex py-1 items-center">
-              <div className="flex-grow border-t border-gray-200"></div>
-              <span className="flex-shrink mx-3 text-xs font-bold text-gray-500 uppercase tracking-wider bg-gray-50 px-3 py-1 rounded-full border border-gray-200">
-                Atau Input Manual
-              </span>
-              <div className="flex-grow border-t border-gray-200"></div>
-            </div>
 
             {/* Section 2: Form Input Manual / Detail Penghuni */}
             <div className="space-y-4">
