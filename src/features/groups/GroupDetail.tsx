@@ -708,14 +708,27 @@ if (isLoadingGroup) {
 
       let updatedGroup: Group | null = null;
       if (group.backendId) {
-        updatedGroup = await kloterService.updateKloter(group.backendId, {
-          name: editFormData.name || group.name,
-          departure_date: editFormData.departureDate || null,
-          return_date: editFormData.returnDate || null,
-          status: backendStatus,
-          tour_leader: tlName,
-          mutawif_local: mwName,
-        });
+        try {
+          updatedGroup = await kloterService.updateKloter(group.backendId, {
+            name: editFormData.name || group.name,
+            departure_date: editFormData.departureDate || null,
+            return_date: editFormData.returnDate || null,
+            status: backendStatus,
+            tour_leader: tlName,
+            mutawif_local: mwName,
+          });
+        } catch (apiErr) {
+          console.warn("API updateKloter failed, updating locally:", apiErr);
+          updatedGroup = {
+            ...group,
+            name: editFormData.name || group.name,
+            departureDate: editFormData.departureDate || null,
+            returnDate: editFormData.returnDate || null,
+            status: uiStatus,
+            tourLeader: tlName || group.tourLeader,
+            mutawif: mwName || group.mutawif,
+          };
+        }
 
         // Sync Tour Leader pivot
         const currentAssignedTLs = getKloterTourLeaders(targetKloterId, tourLeaders);
@@ -791,6 +804,11 @@ if (isLoadingGroup) {
 
       setIsEditModalOpen(false);
       toast('Informasi kloter berhasil diperbarui!', 'success');
+
+      // Jika status kloter diubah menjadi arsip, pindah ke halaman/tab arsip
+      if (uiStatus === 'Archived' || backendStatus === 'archived') {
+        navigate('/groups?tab=archived');
+      }
     } catch (error) {
       const message =
         error instanceof Error

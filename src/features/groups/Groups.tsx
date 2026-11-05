@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from '@/lib/toast';
 import { ConfirmDeleteDialog } from '@/components/ui/ConfirmDeleteDialog';
 import { Card, CardContent } from '@/components/ui/Card';
@@ -46,8 +46,22 @@ export default function Groups() {
     rooms 
   } = useStore();
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState<'all' | 'active' | 'draft' | 'archived'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'active' | 'draft' | 'archived'>(() => {
+    if (tabParam === 'archived' || tabParam === 'active' || tabParam === 'draft') {
+      return tabParam;
+    }
+    return 'all';
+  });
+
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && ['all', 'active', 'draft', 'archived'].includes(tab)) {
+      setActiveTab(tab as any);
+    }
+  }, [searchParams]);
   const [showFilters, setShowFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
