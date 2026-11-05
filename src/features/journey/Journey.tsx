@@ -804,11 +804,13 @@ export default function Journey() {
                             </div>
 
                             {/* Judul & Keterangan */}
-                            <div className="flex flex-col flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="font-bold text-gray-900 text-sm truncate">{schedule.title}</span>
+                            <div className="flex flex-col flex-1 min-w-0 pr-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-bold text-gray-900 text-sm truncate mr-2" title={schedule.title}>
+                                  {schedule.title}
+                                </span>
                                 {catInfo && (
-                                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border ${catInfo.bg}`}>
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border shrink-0 ml-auto ${catInfo.bg}`}>
                                     {catInfo.label}
                                   </span>
                                 )}
@@ -974,6 +976,7 @@ export default function Journey() {
                 <TableBody>
                   {filteredSchedules.map((schedule) => {
                     const status = getScheduleStatus(schedule);
+                    const catInfo = getCategoryBadge(schedule.category);
 
                     return (
                       <TableRow key={schedule.id} className={`transition-all ${selectedIds.has(schedule.id) ? "bg-red-50/50" : "hover:bg-gray-50 relative z-10"}`}>
@@ -999,8 +1002,15 @@ export default function Journey() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <div className="flex flex-col">
-                            <span className="font-bold text-gray-900 text-sm">{schedule.title}</span>
+                          <div className="flex flex-col pr-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-bold text-gray-900 text-sm">{schedule.title}</span>
+                              {catInfo && (
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border shrink-0 ml-auto ${catInfo.bg}`}>
+                                  {catInfo.label}
+                                </span>
+                              )}
+                            </div>
                             {schedule.keterangan && (
                                <span className="text-xs text-gray-500 line-clamp-1 mt-0.5">{schedule.keterangan}</span>
                             )}
